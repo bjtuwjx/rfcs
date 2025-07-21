@@ -431,9 +431,38 @@ Some people were in favor of it, but some people didn’t want it for project X.
 
 Will implement it. 
 
+Phase 1: 代码解耦与目录重构 (预计周期: 2个月)
+
+1. 核心模块解耦
+  - 完成 `aten/src/ATen/cuda` 和 `c10/cuda` 的代码分离，建立独立编译单元
+  - 重构 `torch/csrc/cuda` 的 Python-C++ 绑定层，确保与核心框架解耦
+  - 验证分布式 (`distributed/c10d/cuda`) 和性能分析 (`profiler/stubs/cuda`) 模块的插件化可行性
+2. 目录结构调整
+  - 迁移 CUDA 相关代码至新目录结构（如 `csrc/framework/cuda`）
+  - 标准化 backends/ 下的 Python 接口，统一命名规范（如 `torch.backends.pu1` 替代 `torch.backends.cuda`）
+3. 构建系统适配
+  - 实现 torch_cuda 和 torch_python_cuda 的独立 CMake 工程
+  - 统一新设备专用扩展构建器 `torch.utils.cpp_extension.NewDeviceCppExtension` ，支持多后端编译隔离
+
+Phase 2: 兼容性测试与第三方硬件接入 (预计周期: 1个月)
+
+1. 向后兼容性保障
+  - 维护 torch.cuda.* 的临时别名，通过 Deprecation Warning 引导用户迁移至 torch.pu1.*
+  - 测试现有 CUDA 模型的兼容性（重点验证 is_cuda() 等调用的替换逻辑）
+  - 编写《硬件后端接入指南》
+2. 第三方厂商协作
+  - 与 moer 等厂商合作，验证 PrivateUse1 接入路径的可行性
+  - 编写《硬件后端接入指南》
+
 #### Tracking issue
 
 <github issue URL>
+
+* 主跟踪任务: #[GitHub Issue Number]
+* 子任务拆分:
+  - 代码解耦: #[Sub-Issue 1]
+  - 构建系统: #[Sub-Issue 2]
+  - 文档更新: #[Sub-Issue 3]
 
 #### Exceptions
 
