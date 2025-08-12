@@ -20,18 +20,25 @@
 
 </details>
 
-# Decouple CUDA Codes
+# **CUDA code decoupling and directory restructuring**
 
 **Authors:**
-
-* @nickname
-* @nickname 
+- @ywwbill
+- @bjtuwjx
+- @jinghere11
+- @bithighrr
+- @treestreamymw
+- @liyagit21
+- @崔巍
+- @leiborzhu
+- @Fuzewei
+- @hhong
 
 ## **Summary** （1人）王家喜
 
 A short paragraph or bullet list that quickly explains what you're trying to do. <br />
-目前，第三方硬件后端接入PyTorch的方式主要包括复用CUDA key和代码逻辑、利用树内预定义的key（如Intel XPU）和部分代码以及利用树内预留的PrivateUse1 key等三种。一方面，由于CUDA软件栈的生态地位，部分硬件厂商（如AMD HIP和MetaX MACA）选择直接复用CUDA key，通过兼容CUDA API的方式最小化PyTorch使用者的代码迁移成本。这种方法的优点是可以直接复用CUDA代码的逻辑，厂商适配工作量较小，但为了发挥硬件的优势，需要对CUDA kernel等代码进行侵入式修改。另一方面，随着PrivateUse1接入机制的不断完善，越来越多的厂商（如Ascend NPU和Cambricon MLU）选择此种接入方式，这种方法的优点是对PyTorch侵入修改较少，但厂商适配工作量较大（如无法直接复用CUDA代码逻辑）。<br />
-本RFC提案旨在充分融合两者的优势，弥补相互之间的不足，先将CUDA代码解耦出来，形成相对独立的代码目录结构和编译单元；而后，逐步实现CUDA硬件后端、类CUDA硬件后端和其他架构硬件后端以统一的PrivateUse1机制接入PyTorch。
+目前，第三方硬件后端接入PyTorch的方式主要包括复用CUDA key和代码逻辑、利用树内预定义的key（如AMD HIP和Intel XPU）和部分代码以及利用树内预留的PrivateUse1 key等三种。一方面，由于CUDA软件栈的生态地位，部分硬件厂商（如Kunlunxin XPU和MetaX MACA）选择直接复用CUDA key，通过兼容CUDA API的方式最小化PyTorch使用者的代码迁移成本。这种方法的优点是可以直接复用CUDA代码的逻辑，厂商适配工作量较小，但为了发挥硬件的优势，需要对CUDA kernel等代码进行侵入式修改。另一方面，随着PrivateUse1接入机制的不断完善，越来越多的厂商（如Ascend NPU和Cambricon MLU）选择此种接入方式，这种方法的优点是对PyTorch侵入修改较少，但厂商适配工作量较大（如无法直接复用CUDA代码逻辑）。<br />
+本RFC提案旨在充分融合两者的优势，弥补相互之间的不足，先将CUDA代码解耦出来，形成相对独立的代码目录结构和编译单元；而后，逐步实现CUDA硬件后端、类CUDA硬件后端和其他架构硬件后端以统一的机制接入PyTorch。
 
 ## **Highlights** （1人）袁孟雯
 
@@ -67,80 +74,58 @@ Consider:
 * including code examples, if you're proposing an interface or system contract.
 
 * linking to project briefs or wireframes that are relevant.
-
-* 代码分离（1人）  张靖
   
-  <h3 id="fc3655d2"><font style="color:rgba(0, 0, 0, 0.9);">一、需要解耦的功能模块</font></h3>
+### 需要解耦的功能模块
 
-<font style="color:rgba(0, 0, 0, 0.9);">涉及到需要解耦的功能模块包括：</font>
-
-```markdown
-├── aten                    # Tensor ops相关代码
-├── c10/cuda                # 设备管理核心代码
-├── caffe2                  # torch和caffe2合并的遗留文件夹，当前仅需保留CMakeLists.txt，用于编译和连接aten和c10的源文件
-├── torch/cuda              # Python端接口
-├── torch/backends          # PyTorch硬件后端Python接口
-├── torch/csrc/cuda         # 主要是Python端和C++端的pybind
-├── torch/csrc/distributed  # distributed底层实现代码
-├── torch/csrc/jit          # jit底层实现代码
-├── torch/csrc/profiler     # profiler底层实现代码
-├── torch/csrc/dynamo       # dynamo底层实现代码
-└── torch/csrc/inductor     # inductor底层实现代码
-```
-
-<h3 id="d65ce516"><font style="color:rgba(0, 0, 0, 0.9);">二、解耦方式</font></h3>
-
-<font style="color:rgba(0, 0, 0, 0.9);">我们通过实践总结了以下四种解耦方式，这四种方式并不是独立的，而是相互照应、相互补充的。</font>
+纵观PyTorch代码仓库，CUDA相关代码分散放置在多个目录下。这些目录涉及PyTorch不同的功能模块，具体如下图所示：
 
 <div style="text-align: center;">
-    <img src="RFC-0039-assets/decoupling.png" alt="decoupling" style="width: 80%;">
-    <p>图1 解耦方式</p>
+    <img src="./RFC-0039-assets/CUDA-related-dirs.png" alt="CUDA-related-dirs" style="width:60%;">
+    <p>Fig. 1 CUDA related directories and their functionalities</p>
 </div>
 
-<h4 id="83253c23"><font style="color:rgba(0, 0, 0, 0.9);">（一）文件间解耦</font></h4>
+我们的主要工作是将以上CUDA相关代码从各个目录剥离出来，并放置在一个重组和优化后的目录结构之下。
 
-<font style="color:rgba(0, 0, 0, 0.9);">解耦</font><font style="color:rgba(0, 0, 0, 0.9);">标准如下：</font>
+### 解耦方式
 
-<h5 id="H6xQ7"><font style="color:rgba(0, 0, 0, 0.9);">1. 文件夹名称包含 </font>`<font style="color:rgba(0, 0, 0, 0.9);background-color:rgba(0, 0, 0, 0.03);">cuda</font>`<font style="color:rgba(0, 0, 0, 0.9);">、</font>`<font style="color:rgba(0, 0, 0, 0.9);background-color:rgba(0, 0, 0, 0.03);">cudnn</font>`<font style="color:rgba(0, 0, 0, 0.9);">、</font>`<font style="color:rgba(0, 0, 0, 0.9);background-color:rgba(0, 0, 0, 0.03);">THC</font>`<font style="color:rgba(0, 0, 0, 0.9);"> 关键字。</font></h5>
+我们通过实践总结了以下四种解耦方式，也即文件间解耦、文件内解耦、补充编译有依赖的文件、根据编译文件功能模块划分。值得说明的是，这四种方式并不是独立的，而是相互联系且互为补充的。
 
-<font style="color:rgba(0, 0, 0, 0.9);">示例：</font>
+#### 文件间解耦
 
-- `torch/backends/cuda`
-- `torch/backends/cudnn`
-- `torch/cuda`
-- `aten/src/ATen/cuda`
-- `aten/src/ATen/cudnn`
-- `aten/src/ATen/native/cuda`
-- `aten/src/ATen/native/cudnn`
-- `aten/src/ATen/native/nested/cuda`
-- `aten/src/ATen/native/quantized/cuda`
-- `aten/src/ATen/native/quantized/cudnn`
-- `aten/src/ATen/native/sparse/cuda`
-- `aten/src/ATen/native/transformers/cuda`
-- `aten/src/THC`
-- `torch/csrc/cuda`
-- `torch/csrc/distributed/c10d/cuda`
+解耦标准如下：
 
-<h5 id="E2gdO"><font style="color:rgba(0, 0, 0, 0.9);">2. 文件名包含 </font>`<font style="color:rgba(0, 0, 0, 0.9);background-color:rgba(0, 0, 0, 0.03);">cuda</font>`<font style="color:rgba(0, 0, 0, 0.9);">、</font>`<font style="color:rgba(0, 0, 0, 0.9);background-color:rgba(0, 0, 0, 0.03);">cudnn</font>`<font style="color:rgba(0, 0, 0, 0.9);">、</font>`<font style="color:rgba(0, 0, 0, 0.9);background-color:rgba(0, 0, 0, 0.03);">THC</font>`<font style="color:rgba(0, 0, 0, 0.9);"> 关键字。</font></h5>
+- 文件夹名称包含 `cuda`、`cudnn`、`THC` 关键字。示例：
 
-<font style="color:rgba(0, 0, 0, 0.9);">示例：</font>
+    - `torch/backends/cuda`
+    - `torch/backends/cudnn`
+    - `torch/cuda`
+    - `aten/src/ATen/cuda`
+    - `aten/src/ATen/cudnn`
+    - `aten/src/ATen/native/cuda`
+    - `aten/src/ATen/native/cudnn`
+    - `aten/src/ATen/native/nested/cuda`
+    - `aten/src/ATen/native/quantized/cuda`
+    - `aten/src/ATen/native/quantized/cudnn`
+    - `aten/src/ATen/native/sparse/cuda`
+    - `aten/src/ATen/native/transformers/cuda`
+    - `aten/src/THC`
+    - `torch/csrc/cuda`
+    - `torch/csrc/distributed/c10d/cuda`
 
-- `torch/csrc/distributed/rpc/tensorpipe_cuda.cpp`
-- `torch/csrc/profiler/stubs/cuda.cpp`
+- 文件名包含`cuda`、`cudnn`、`THC` 关键字。示例：
 
-<h5 id="bOOx4"><font style="color:rgba(0, 0, 0, 0.9);">3. 后缀名是 </font>`<font style="color:rgba(0, 0, 0, 0.9);background-color:rgba(0, 0, 0, 0.03);">.cu</font>`<font style="color:rgba(0, 0, 0, 0.9);">、</font>`<font style="color:rgba(0, 0, 0, 0.9);background-color:rgba(0, 0, 0, 0.03);">.cuh</font>`<font style="color:rgba(0, 0, 0, 0.9);">。</font></h5>
+    - `torch/csrc/distributed/rpc/tensorpipe_cuda.cpp`
+    - `torch/csrc/profiler/stubs/cuda.cpp`
 
-<font style="color:rgba(0, 0, 0, 0.9);">示例：</font>
+- 后缀名是 `.cu`、`.cuh`。示例：
 
-- `torch/csrc/distributed/c10d/quantization/quantization_gpu.cu`
+    - `torch/csrc/distributed/c10d/quantization/quantization_gpu.cu`
 
-<h4 id="586d0dc4"><font style="color:rgba(0, 0, 0, 0.9);">（二）文件内解耦</font></h4>
+#### 文件内解耦
 
 有些cuda代码直接和torch代码耦合在一个文件内，通过环境变量、宏定义或者设备判断等隔离。
 
-<h5 id="e819c231"><font style="color:rgba(0, 0, 0, 0.9);">1. 包含 CUDA 相关的环境变量判断</font></h5>
-
-<font style="color:rgba(0, 0, 0, 0.9);">示例：</font>
+- 包含 CUDA 相关的环境变量判断. 示例：
 
 ```cpp
 #if defined(__CUDA_ARCH__) 存在于下列文件
@@ -157,15 +142,13 @@ torch/csrc/inductor/aoti_runner/pybind.cpp
 torch/csrc/jit
 ```
 
-<h5 id="f813fdd6"><font style="color:rgba(0, 0, 0, 0.9);">2. 文件内包含 CUDA 相关宏定义</font></h5>
+- 文件内包含 CUDA 相关宏定义
 
-+ `TORCH_CUDA_CU_API`
-+ `TORCH_CUDA_CPP_API`
-+ `TORCH_CUDA_CHECK`
+    - `TORCH_CUDA_CU_API`
+    - `TORCH_CUDA_CPP_API`
+    - `TORCH_CUDA_CHECK`
 
-<h5 id="2e31866b"><font style="color:rgba(0, 0, 0, 0.9);">3. 文件内包含 is_cuda、kCUDA、“cuda”等</font></h5>
-
-示例：
+- 文件内包含 is_cuda、kCUDA、“cuda”等.示例：
 
 ```cpp
 static CUDAHooksInterface* cuda_hooks = nullptr;
@@ -174,47 +157,35 @@ xxtensor.device().type() == at::kCUDA
 register_cuda_runner("cuda", &create_aoti_runner_cuda)
 ```
 
-<h4 id="49e30103"><font style="color:rgba(0, 0, 0, 0.9);">（三）补充编译有依赖的文件</font></h4>
+#### 补充编译有依赖的文件
 
-为了独立编译CUDA，CUDA编译需要依赖的文件也做了解耦。
+为了独立编译CUDA，CUDA编译需要依赖的文件也做了解耦。需要补充的文件类型包括：
 
-<font style="color:rgba(0, 0, 0, 0.9);">需要补充的文件类型包括：</font>
+- `*.h`、`*.hpp` 头文件。示例：
 
-<h5 id="FuDse">1. `<font style="color:rgba(0, 0, 0, 0.9);background-color:rgba(0, 0, 0, 0.03);">*.h</font>`<font style="color:rgba(0, 0, 0, 0.9);">、</font>`<font style="color:rgba(0, 0, 0, 0.9);background-color:rgba(0, 0, 0, 0.03);">*.hpp</font>`<font style="color:rgba(0, 0, 0, 0.9);"> 头文件。</font></h5>
+    - torch/csrc/autograd/functions/comm.h
 
-示例：
+- 配置文件。示例：
 
-<span class="path-highlight">torch/csrc/autograd/functions/comm.h</span>
+    - aten/src/ATen/ATenConfig.cmake.in 
+    - aten/src/ATen/Config.h.in 
+    - aten/src/ATen/native/native_functions.yaml  
+    - aten/src/ATen/native/tags.yaml
+    - aten/src/ATen/native/ts_native_functions.yaml
 
-<h5 id="x8Noj"><span class="header-highlight">2. 配置文件。</span></h5>
+- 模板文件。示例：
 
-示例：
+    - aten/src/ATen/templates
 
-<span class="path-highlight">aten/src/ATen/ATenConfig.cmake.in</span>  
-<span class="path-highlight">aten/src/ATen/Config.h.in</span>  
-<span class="path-highlight">aten/src/ATen/native/native_functions.yaml</span>  
-<span class="path-highlight">aten/src/ATen/native/tags.yaml</span>  
-<span class="path-highlight">aten/src/ATen/native/ts_native_functions.yaml</span>
+- 打桩文件。示例：
 
-<h5 id="x6ttV"><span class="header-highlight">3. 模板文件。</span></h5>
+    - torch/csrc/stub.c
 
-示例：
+#### 根据编译文件功能模块划分
 
-<span class="path-highlight">aten/src/ATen/templates</span>
+有助于查漏补缺、去除冗余代码。
 
-<h5 id="CTl4m"><span class="header-highlight">4. 打桩文件。</span></h5>
-
-示例：
-
-<span class="path-highlight">torch/csrc/stub.c</span>
-
-<h4 id="b867b20f"><font style="color:rgba(0, 0, 0, 0.9);">（四）根据编译文件功能模块划分</font></h4>
-
-<font style="color:rgba(0, 0, 0, 0.9);">有助于查漏补缺、去除冗余代码。</font>
-
-示例 1：
-
-<font style="color:rgba(0, 0, 0, 0.9);">通过</font>build_variables<font style="color:rgba(0, 0, 0, 0.9);">.bzl中文件划分解耦 distributed 模块 CUDA 相关代码</font>
+- 示例 1：通过build_variables.bzl中文件划分解耦 distributed 模块 CUDA 相关代码
 
 ```cpp
 # These files are the only ones that are supported on Windows.
@@ -244,9 +215,7 @@ libtorch_cuda_distributed_extra_sources = [
 libtorch_cuda_distributed_sources = libtorch_cuda_distributed_base_sources + libtorch_cuda_distributed_extra_sources
 ```
 
-示例 2：
-
-根据aten\src\ATen\CMakeLists.txt中文件划分添加aten\src\ATen\native\miopen代码
+- 示例 2：根据aten\src\ATen\CMakeLists.txt中文件划分添加aten\src\ATen\native\miopen代码
 
 ```cpp
 list(APPEND ATen_CUDA_CPP_SRCS
@@ -261,10 +230,7 @@ list(APPEND ATen_CUDA_CPP_SRCS
   ${native_transformers_cuda_cpp}
 )
 ```
-
-* 目录重构（1人）  张靖
-  
-  <h3 id="7e0821a0"><font style="color:rgba(0, 0, 0, 0.9);">三、目录重构</font></h3>
+### 目录重构
 
 <div style="text-align: center;">
     <img src="RFC-0039-assets/catalogue.png" alt="catalogue" style="width: 80%;">
@@ -273,21 +239,21 @@ list(APPEND ATen_CUDA_CPP_SRCS
 
 cuda解耦出来后，原始目录参考第一节，除了nvidia（cuda），我们调研了[AMD(gpu)](https://github.com/ROCm/pytorch)、[Google(TPU)](https://github.com/pytorch/xla/tree/master)、[Intel(XPU)](https://github.com/intel/intel-extension-for-pytorch)、[Ascend(NPU)](https://gitee.com/ascend/pytorch)、[Cambricon(MLU)](https://github.com/Cambricon/torch_mlu/tree/r2.4_develop)等多个超算卡厂商适配pytorch的方式，总结了各厂商适配PyTorch的代码目录结构、相似和特异性改动点，着重考虑到了以下因素：
 
-<h5 id="Ee0MW">1. Python/C++分层解耦</h5>
+1. Python/C++分层解耦
 
 通过物理隔离Python层（core/、backends/）和C++层（csrc/），明确区分接口定义与底层实现，降低代码耦合度。这样有助于Python层专注于业务逻辑和用户接口，而C++层则处理底层实现和性能优化。
 
-<h5 id="CkxwH"><font style="color:rgb(44, 44, 54);">2. 模块化独立插件</font></h5>
+2. 模块化独立插件
 
 将distributed/、profiler/作为独立插件，与核心框架解耦，使得各个模块可以独立开发、测试和迭代，同时也便于第三方开发者根据需要选择性地集成或扩展某些功能。
 
-<h5 id="HowFi"><font style="color:rgb(44, 44, 54);">3. 统一硬件适配框架</font></h5>
+3. 统一硬件适配框架
 
 合并 `c10/cuda` 和 `caffe2` 为 `framework/`，形成统一的设备管理与资源调度层，降低了维护成本。
 
-<h5 id="CtkWI"><font style="color:rgb(44, 44, 54);">4. 目录重命名</font></h5>
+4. 目录重命名
 
-<font style="color:rgb(44, 44, 54);">新的目录命名尽量直观地反映了其包含的内容和功能，例如 core 表示核心接口层，csrc 表示C++源代码，python 表示Python与C++的绑定层等，便于开发人员快速理解和导航项目代码。</font>
+新的目录命名尽量直观地反映了其包含的内容和功能，例如 core 表示核心接口层，csrc 表示C++源代码，python 表示Python与C++的绑定层等，便于开发人员快速理解和导航项目代码。
 
 最后，整理出的新的适配代码目录结构如下：
 
@@ -305,9 +271,7 @@ cuda解耦出来后，原始目录参考第一节，除了nvidia（cuda），我
 └── profiler/                     # 性能分析模块（独立插件）
 ```
 
-<font style="color:rgb(44, 44, 54);"></font>
-
-<h3 id="7e0821a0"><font style="color:rgba(0, 0, 0, 0.9);">四、编译工程优化</font></h3>
+### 编译工程优化
 本方案针对PyTorch原生CUDA设备编译流程进行了以下关键性改进：
 
 - **编译逻辑解耦**  
