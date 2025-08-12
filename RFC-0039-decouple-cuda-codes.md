@@ -296,9 +296,11 @@ cuda解耦出来后，原始目录参考第一节，除了nvidia（cuda），我
   
   - 分离出独立设备模块`_CUDAC.cpython-XX.so`，具备独立初始化链路
   - 统一新设备专用扩展构建器`torch.utils.cpp_extension.NewDeviceCppExtension`，实现编译环境与核心框架的物理隔离
-
-                          ![编译架构对比](RFC-0039-assets/decouple_cuda_compiling_implementation.png)        
-  _图4.1: 编译架构对比（左：原始架构，右：新架构）_
+  
+<div style="text-align: center;">
+    <img src="RFC-0039-assets/decouple_cuda_compiling_implementation.png" alt="compiling" style="width: 80%;">
+    <p>图2 编译架构对比（左：原始架构，右：新架构）</p>
+</div>
 
 ## 优缺点（1人）   付泽伟
 
