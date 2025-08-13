@@ -185,7 +185,7 @@ Moreover, to enable standalone compilation of CUDA, files required by CUDA compi
 
 ### Directory restructuring
 
-After decoupling the CUDA code, the next step is to reorganize it into a new directory structure. Regarding directory restructuring, we first investigated the approaches used by several hardware vendors—such as [AMD (GPU)](https://github.com/ROCm/pytorch), [Google (TPU)](https://github.com/pytorch/xla/tree/master), [Intel (XPU)](https://github.com/intel/intel-extension-for-pytorch), [Ascend (NPU)](https://gitee.com/ascend/pytorch), and [Cambricon (MLU)](https://github.com/Cambricon/torch_mlu/tree/r2.4_develop) to adapt PyTorch to their hardwares. We analyzed their codebase directory structures, as well as the commonalities and specific modifications made during integration. Based on the analysis, we restructured the CUDA code directory layout shown in Fig. 1 into the new design as illustrated in Fig. 2.
+After decoupling the CUDA code, the next step is to reorganize it into a new directory structure. Regarding directory restructuring, we first investigated the approaches used by several hardware vendors—such as [AMD (ROCm)](https://github.com/ROCm/pytorch), [Google (TPU)](https://github.com/pytorch/xla/tree/master), [Intel (XPU)](https://github.com/intel/intel-extension-for-pytorch), [Ascend (NPU)](https://gitee.com/ascend/pytorch), and [Cambricon (MLU)](https://github.com/Cambricon/torch_mlu/tree/r2.4_develop) to adapt PyTorch to their hardwares. We analyzed their codebase directory structures, as well as the commonalities and specific modifications made during integration. Based on the analysis, we restructured the CUDA code directory layout shown in Fig. 1 into the new design as illustrated in Fig. 2.
 
 <div style="text-align: center;">
     <img src="./RFC-0039-assets/restructured-dirs.png" alt="restructured-dirs" style="width:80%;">
@@ -298,11 +298,12 @@ What other designs have been considered? What is the impact of not doing this?
 总体而言，Cambricon 和摩尔线程都通过插件式、补丁式改造方式实现了 CUDA 编译逻辑的拆分：前者需要维护带补丁的 PyTorch 分支，后者则在保持主 PyTorch 源兼容的基础上提供独立扩展包，两者都在实践中支持了各自设备的动态加载与调用。
 
 ## **Unresolved Questions**
-由于PyTorch 原生代码所存在的一些待解决问题，以及构建流程的变化，我们需要对一些未分离的代码（也即非CUDA代码）进行少量的改动。为避免直接对Pytorch代码进行侵入式修改，我们将这些改动作为patch并统一放置在`third_device/torch_cuda/torch_patches`目录下作为过渡性的解决方案。在构建开始之前，我们应先apply这些patch。
 
-下面给出patch的两个例子。
+Due to some unresolved issues in the native PyTorch codebase and changes in the build process, we need to make minor modifications to certain code that has not been decoupled (i.e., non-CUDA code). To avoid making intrusive changes directly to the PyTorch codebase, we have placed these modifications as patches in the `third_device/torch_cuda/torch_patches` directory as a transitional solution. These patches should be applied before the build process begins.
 
-- Example 1：由于我们将构建拆分为了torch_cpu和torch_cuda两个阶段。在torch_cpu阶段，`USE_CUDA`环境变量将关闭，也即只编译非CUDA代码。[由于kineto库的设计缺陷](https://github.com/pytorch/pytorch/blob/fea7e9dd37c02c334b130f6624af6163fde6b2ab/caffe2/CMakeLists.txt#L1624)，使得我们在编译torch_cpu阶段，也需要将torch_cpu链接到cudart。因此，我们需要对`caffe2/CMakeLists.txt`增加下面的patch：
+Below are two examples of patches.
+
+- Example 1: Since we have split the build process into two stages: torch_cpu stage and torch_cuda stage, the `USE_CUDA` flag will be disabled during the torch_cpu stage, meaning only non-CUDA code is compiled. However, due to [a design limitation of the Kineto library](https://github.com/pytorch/pytorch/blob/fea7e9dd37c02c334b130f6624af6163fde6b2ab/caffe2/CMakeLists.txt#L1624), the torch_cpu build stage still requires linking against cudart. Therefore, we need to apply the following patch to file `caffe2/CMakeLists.txt`:
 ```patch
 +if(USE_KINETO AND NOT MSVC AND NOT LIBKINETO_NOCUPTI)
 +  find_package(CUDA REQUIRED)
@@ -310,7 +311,7 @@ What other designs have been considered? What is the impact of not doing this?
 +endif()
 ```
 
-- Example 2：在原来的单阶段构建框架下，所有的cpu和CUDA API都编译为_C动态库中；而在2阶段构建框架下，CUDA相关的API将编译为_CUDAC动态库。因此，通过Python访问CUDA API的方式将发生一些变化。例如，对于`torch/_dynamo/device_interface.py`这个文件我们需要增加下面的patch：
+- Example 2: In the original single-stage build framework, all CPU and CUDA APIs are compiled into the `_C` shared lib. However, in the two-stage build framework, CUDA-related APIs will be compiled into a separate `_CUDAC` shared lib. As a result, the way Python accesses CUDA APIs will change. For example, we need to apply the following patch to file `torch/_dynamo/device_interface.py`:
 ```patch
  get_cuda_stream: Optional[Callable[[int], int]]
  if torch.cuda._is_compiled():
@@ -320,7 +321,7 @@ What other designs have been considered? What is the impact of not doing this?
      get_cuda_stream = None
 ```
 
-我们期待通过PyTorch社区的群策群力，能最终消除这些patch。
+We hope that, with the collective effort of the PyTorch community, these patches can eventually be eliminated.
 
 ## Next Steps（1人）侯丽亚
 
