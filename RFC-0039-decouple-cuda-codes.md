@@ -7,7 +7,7 @@
 - @bithighrr
 - @treestreamymw
 - @liyagit21
-- @崔巍
+- @cuiw
 - @leiborzhu
 - @Fuzewei
 - @hhong
@@ -233,8 +233,8 @@ CUDA代码解耦出来后，下一步便是要将其重新组织到新的目录�
   - 统一新设备专用扩展构建器`torch.utils.cpp_extension.NewDeviceCppExtension`，实现编译环境与核心框架的物理隔离
   
 <div style="text-align: center;">
-    <img src="RFC-0039-assets/decouple_cuda_compiling_implementation.png" alt="compiling" style="width: 80%;">
-    <p>图2 编译架构对比（左：原始架构，右：新架构）</p>
+    <img src="RFC-0039-assets/build-refactor.png" alt="compiling" style="width: 80%;">
+    <p>Fig. 3 CUDA codes building (left: current; right: refactored)</p>
 </div>
 
 ## 优缺点（1人）   付泽伟
@@ -274,11 +274,11 @@ What other designs have been considered? What is the impact of not doing this?
 
 代码有以下两种放置方案：
 
-1. in-tree
+- in-tree
 
-在Pytorch代码下新建目录pytorch/third_device/torch_cuda放入分离后代码，编译过程融       入Pytorch编译中，编译前通过patch形式对Pytorch原生代码进行修改，可以无缝集成到 PyTorch 生态系统中，和PyTorch进行同步开发和版本更新，安全性和稳定性更高，兼容性好，不需要再进行额外的代码适配和测试。
+在Pytorch代码下新建目录pytorch/third_device/torch_cuda放入分离后代码，编译过程融入Pytorch编译中，编译前通过patch形式对Pytorch原生代码进行修改，可以无缝集成到 PyTorch 生态系统中，和PyTorch进行同步开发和版本更新，安全性和稳定性更高，兼容性好，不需要再进行额外的代码适配和测试。
 
-2. out-of-tree
+- out-of-tree
 
 不将代码直接集成到主代码库中，新建仓库对代码独立进行编译和维护，使用时以插件形式接入Pytorch，不对Pytorch原生代码进行侵入式修改，可以提高代码灵活性并降低代码维护成本，开发者可以在不影响主项目的情况下，自由地进行代码改进、修复漏洞和添加新功能，实现快速迭代和测试。
 
@@ -301,7 +301,7 @@ What other designs have been considered? What is the impact of not doing this?
 
 下面给出patch的两个例子。
 
-- Example 1：由于我们将构建拆分为了torch_cpu和torch_cuda两个阶段。在torch_cpu阶段，`USE_CUDA`环境变量将关闭，也即只编译非CUDA代码。由于kineto库的设计缺陷（https://github.com/pytorch/pytorch/blob/fea7e9dd37c02c334b130f6624af6163fde6b2ab/caffe2/CMakeLists.txt#L1624），使得我们在编译torch_cpu阶段，也需要将torch_cpu链接到cudart。因此，我们需要对`caffe2/CMakeLists.txt`增加下面的patch：
+- Example 1：由于我们将构建拆分为了torch_cpu和torch_cuda两个阶段。在torch_cpu阶段，`USE_CUDA`环境变量将关闭，也即只编译非CUDA代码。[由于kineto库的设计缺陷](https://github.com/pytorch/pytorch/blob/fea7e9dd37c02c334b130f6624af6163fde6b2ab/caffe2/CMakeLists.txt#L1624)，使得我们在编译torch_cpu阶段，也需要将torch_cpu链接到cudart。因此，我们需要对`caffe2/CMakeLists.txt`增加下面的patch：
 ```patch
 +if(USE_KINETO AND NOT MSVC AND NOT LIBKINETO_NOCUPTI)
 +  find_package(CUDA REQUIRED)
@@ -347,17 +347,3 @@ Phase 2: 兼容性测试与第三方硬件接入 (预计周期: 1个月)
 2. 第三方厂商协作
   - 与 moer 等厂商合作，验证 PrivateUse1 接入路径的可行性
   - 编写《硬件后端接入指南》
-
-#### Tracking issue
-
-<github issue URL>
-
-* 主跟踪任务: #[GitHub Issue Number]
-* 子任务拆分:
-  - 代码解耦: #[Sub-Issue 1]
-  - 构建系统: #[Sub-Issue 2]
-  - 文档更新: #[Sub-Issue 3]
-
-#### Exceptions
-
-Not implementing on project X now. Will revisit the decision in 1 year.
