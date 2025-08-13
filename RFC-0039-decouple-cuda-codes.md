@@ -7,21 +7,28 @@
 - @bithighrr
 - @treestreamymw
 - @liyagit21
-- @cuiw
+- @deadsec1994
 - @leiborzhu
 - @Fuzewei
-- @hhong
+- @aaacaiji
 
-## **Summary** （1人）王家喜
-目前，第三方硬件后端接入PyTorch的方式主要包括复用CUDA key和代码逻辑、利用树内预定义的key（如AMD HIP和Intel XPU）和部分代码以及利用树内预留的PrivateUse1 key等三种。一方面，由于CUDA软件栈的生态地位，部分硬件厂商（如Kunlunxin XPU和MetaX MACA）选择直接复用CUDA key，通过兼容CUDA API的方式最小化PyTorch使用者的代码迁移成本。这种方法的优点是可以直接复用CUDA代码的逻辑，厂商适配工作量较小，但为了发挥硬件的优势，需要对CUDA kernel等代码进行侵入式修改。另一方面，随着PrivateUse1接入机制的不断完善，越来越多的厂商（如Ascend NPU和Cambricon MLU）选择此种接入方式，这种方法的优点是对PyTorch侵入修改较少，但厂商适配工作量较大（如无法直接复用CUDA代码逻辑）。
+## **Summary**  
 
-本RFC提案旨在充分融合两者的优势，弥补相互之间的不足，先将CUDA代码解耦出来，形成相对独立的代码目录结构和编译单元；而后，逐步实现CUDA硬件后端、类CUDA硬件后端和其他架构硬件后端以统一的机制接入PyTorch。
+Currently, third-party hardware backends primarily integrate with PyTorch through three methods:
+- reusing the CUDA key and its code logic (e.g., [Kunlunxin XPU](https://gitee.com/kunlunxin/pytorch) and [MetaX MACA](https://github.com/MetaX-MACA/mcPytorch/tree/2.4)),
+- utilizing predefined PyTorch in-tree keys along with partial implementation codes (such as [AMD HIP](https://github.com/ROCm/pytorch) and [Intel XPU](https://github.com/intel/intel-extension-for-pytorch)),
+-  leveraging the reserved PrivateUse1 key (e.g., [Ascend NPU](https://gitee.com/ascend/pytorch) and [Cambricon MLU](https://github.com/Cambricon/torch_mlu/tree/r2.4_develop)).
 
-## **Highlights** （1人）袁孟雯
-- 将 CUDA 相关实现从主工程中抽离，降低 PyTorch 核心框架对 CUDA 的直接耦合，提升整体工程可维护性。
-- 更清晰、统一的目录层级结构，提升可读性与可维护性，使开发者能快速定位并理解后端逻辑，降低新开发者参与的学习门槛，为长期维护和社区贡献者提供更友好的结构。
-- 重写构建系统以支持 CUDA 后端独立编译，降低编译复杂度，实现更快的增量构建和更少的构建依赖。
-- 统一设备后端架构风格，为后续支持更多第三方后端提供模板，降低集成门槛和时间成本，提升 PyTorch 后端接入的一致性与可插拔性。
+On one hand, due to the dominant ecosystem position of the CUDA software stack, some hardware vendors opt to directly reuse the CUDA key, achieving compatibility via CUDA APIs to minimize the code migration cost for PyTorch users. The advantage of this approach is that it allows direct reuse of CUDA code logic, resulting in relatively less integration effort for the vendors. However, to fully leverage the hardware's capabilities, invasive modifications to CUDA kernels and related code are often required. On the other hand, with the continuous improvement of the PrivateUse1 integration mechanism, an increasing number of vendors are adopting this method. Its main benefit is minimal intrusive modification to PyTorch, although it demands greater integration effort from vendors (e.g., inability to directly reuse CUDA code logic).
+
+This RFC proposal aims to fully integrate the strengths of both approaches while addressing their respective shortcomings. The plan is to first decouple the CUDA code, establishing a relatively independent directory structure and compilation units. Subsequently, we will gradually enable unified integration mechanisms for the CUDA hardware backend, CUDA-like hardware backends, and other hardware backends with different architectures into PyTorch.
+
+## **Highlights**  
+
+- Decouple CUDA-related code from the main codebase to reduce the direct dependency of the PyTorch core framework code on CUDA, thereby improving overall code maintainability and modularity.
+- Refine the directory hierarchy to make it clearer and more consistent, enhancing code readability and maintainability. This enables developers to quickly locate and understand backend integration logic, lowers the onboarding barrier for new contributors, and provides a more developer-friendly structure for long-term maintenance and community contributions.
+- Redesign the build system to support standalone compilation of the CUDA backend, simplifying the build process, reducing dependencies, and enabling faster incremental builds.
+- Provide a consistent template for integrating new third-party hardware backends. This reduces integration complexity and time-to-market, while enhancing consistency and pluggability across the PyTorch backend integration mechanism.
 
 ## **Motivation**（1人）祝贺
 传统上，NVIDIA GPU与CUDA架构长期作为PyTorch生态中唯一的并行计算解决方案。随着越来越多的厂家推出自己的高效能计算设备，如寒武纪MLU、Graphcore IPU等，当前生态暴露出以下关键问题：
@@ -38,26 +45,26 @@
 
 ## **Proposed Implementation**
 
-### 需要解耦的功能模块
+### Current directory structure of CUDA-related code
 
-纵观PyTorch代码仓库，CUDA相关代码分散放置在多个目录下。这些目录涉及PyTorch不同的功能模块，具体如下图所示：
+Looking across the PyTorch codebase, CUDA-related code is scattered across multiple directories. These directories span various functional modules of PyTorch, as illustrated in Fig. 1 below:
 
 <div style="text-align: center;">
     <img src="./RFC-0039-assets/CUDA-related-dirs.png" alt="CUDA-related-dirs" style="width:60%;">
     <p>Fig. 1 CUDA related directories and their functionalities</p>
 </div>
 
-我们的主要工作是将以上CUDA相关代码从各个目录剥离出来，并放置在一个重组和优化后的目录结构之下。
+Our main task is to extract the above-mentioned CUDA-related code from their respective directories and reorganize them under a redesigned and optimized directory structure.
 
-### 解耦方式
+### Decoupling approaches
 
-从代码来源而言，CUDA代码解耦主要包含文件间解耦和文件内解耦等两大类型。顾名思义，文件间解耦即是将包含CUDA代码的整个源文件从原目录迁移到新目录；而文件内解耦则主要针对包含CPU/CUDA/HIP/XPU等混合代码的文件，将文件中的CUDA代码进行分离，并将这些代码作为新的源文件或插入已有的源文件并迁移到新目录下。
+In terms of code origin, decoupling CUDA code primarily involves two levels: inter-file level decoupling and intra-file level decoupling. As the names suggest, inter-file decoupling refers to moving entire source files containing CUDA code from their original directories to new ones. In contrast, intra-file decoupling focuses on files that contain mixed code for CPU, CUDA, HIP, XPU, etc., where the CUDA-specific portions are separated out—either forming new files or being inserted into existing ones.
 
-#### 文件间解耦
+#### Inter-file level decoupling
 
-文件级别的CUDA代码解耦可以借助文件夹名、文件名或文件名后缀来进行。
+The inter-file level CUDA code decoupling can be done with the help of directory names, file names, or file name suffixes.
 
-- 文件夹名称包含 `cuda`、`cudnn`、`THC` 关键字。示例：
+- Directory names containing the words `cuda`, `cudnn`, or `THC`, etc. For example:
 
     - `torch/backends/cuda`
     - `torch/backends/cudnn`
@@ -75,18 +82,34 @@
     - `torch/csrc/cuda`
     - `torch/csrc/distributed/c10d/cuda`
 
-- 文件名包含`cuda`、`cudnn`、`THC` 关键字。示例：
+- File names containing the words `cuda`, `cudnn`, or `THC`, etc. For example:
 
     - `torch/csrc/distributed/rpc/tensorpipe_cuda.cpp`
     - `torch/csrc/profiler/stubs/cuda.cpp`
 
-- 后缀名是 `.cu`、`.cuh`。示例：
+- File name suffixes are `.cu`, `.cuh`, etc. For example:
 
     - `torch/csrc/distributed/c10d/quantization/quantization_gpu.cu`
 
-事实上，在代码仓的构建配置文件中（如`CMakeLists.txt`和`*.bzl`），已经很好地对部分文件级别的CUDA代码进行了归类。因此，我们也可以利用这些构建配置文件来对文件级别的CUDA代码解耦进行查缺补漏。
+In fact, some file-level CUDA code has already been well categorized by the build configuration files (such as `CMakeLists.txt` and `*.bzl`) in the codebase. Therefore, we can also leverage these build configuration files to help identify and collect inter-file level CUDA code.
 
-- 示例 1：通过`build_variables.bzl`中文件划分解耦 distributed 模块 CUDA 相关代码
+- Example 1：using `aten\src\ATen\CMakeLists.txt` to decouple CUDA code within the directory of `aten\src\ATen\native\miopen`
+
+```cmake
+list(APPEND ATen_CUDA_CPP_SRCS
+  ${cuda_cpp}
+  ${native_cuda_cpp}
+  ${native_cudnn_cpp}
+  ${native_miopen_cpp}
+  ${native_nested_cuda_cpp}
+  ${native_quantized_cuda_cpp}
+  ${native_quantized_cudnn_cpp}
+  ${native_sparse_cuda_cpp}
+  ${native_transformers_cuda_cpp}
+)
+```
+
+- Example 2：using `build_variables.bzl` to decouple CUDA code for the distributed functionality module
 
 ```cmake
 # These files are the only ones that are supported on Windows.
@@ -116,121 +139,99 @@ libtorch_cuda_distributed_extra_sources = [
 libtorch_cuda_distributed_sources = libtorch_cuda_distributed_base_sources + libtorch_cuda_distributed_extra_sources
 ```
 
-- 示例 2：根据`aten\src\ATen\CMakeLists.txt`中文件划分添加`aten\src\ATen\native\miopen`代码
+#### Intra-file level decoupling
 
-```cmake
-list(APPEND ATen_CUDA_CPP_SRCS
-  ${cuda_cpp}
-  ${native_cuda_cpp}
-  ${native_cudnn_cpp}
-  ${native_miopen_cpp}
-  ${native_nested_cuda_cpp}
-  ${native_quantized_cuda_cpp}
-  ${native_quantized_cudnn_cpp}
-  ${native_sparse_cuda_cpp}
-  ${native_transformers_cuda_cpp}
-)
-```
+Some CUDA code is directly coupled with common code or code for other device backends within the same file. This requires identification and decoupling via flags such as environment variables, macro definitions, or CUDA-named codes.
 
-#### 文件内解耦
-有些cuda代码直接和torch代码耦合在一个文件内，通过环境变量、宏定义或者设备判断等隔离。
-- 包含`CUDA`相关的环境变量判断. 示例：
-  - `#if defined(__CUDA_ARCH__)` 存在于下列文件
+- Environment variables or macro definitions
+  - Macro `#if defined(__CUDA_ARCH__)`, such as in file:
     - `torch/csrc/aten/native/Distributions.h`
-  - `#if defined(__CUDACC__)` 存在于下列文件
+  - Macro `#if defined(__CUDACC__)`, such as in file:
     - `torch/csrc/aten/native/sparse/Macros.h`
-  - `#ifdef USE_CUDA` 存在于下列文件或者文件夹
+  - Macro `#ifdef USE_CUDA`, such as in file (or directory):
     - `caffe2/CMakeLists.txt`
     - `torch/csrc/Storage.cpp`
     - `torch/csrc/dynamo/guards.cpp`
     - `torch/csrc/inductor/aoti_runner/pybind.cpp`
     - `torch/csrc/jit`
+  - Other macros include `TORCH_CUDA_CU_API`, `TORCH_CUDA_CPP_API`, `TORCH_CUDA_CHECK`
 
-- 文件内包含`CUDA`相关宏定义
-  - `TORCH_CUDA_CU_API`
-  - `TORCH_CUDA_CPP_API`
-  - `TORCH_CUDA_CHECK`
+- CUDA-named codes
+  - Function `is_cuda`, backend key `kCUDA`, or device type `cuda`, such as：
+  ```cpp
+  static CUDAHooksInterface* cuda_hooks = nullptr;
+  xxtensor.is_cuda()
+  xxtensor.device().type() == at::kCUDA
+  register_cuda_runner("cuda", &create_aoti_runner_cuda)
+  ```
 
-- 文件内包含 `is_cuda`、`kCUDA`、`cuda`等.示例：
-```cpp
-static CUDAHooksInterface* cuda_hooks = nullptr;
-xxtensor.is_cuda()
-xxtensor.device().type() == at::kCUDA
-register_cuda_runner("cuda", &create_aoti_runner_cuda)
-```
+Moreover, to enable standalone compilation of CUDA, files required by CUDA compilation also need to be decoupled or migrated. The types of files that need to be supplemented include:
 
-此外，为了独立编译CUDA，CUDA编译需要依赖的文件也需要进行解耦或迁移。需要补充的文件类型包括：
-
-- `*.h`、`*.hpp` 头文件。示例：
+- `*.h`、`*.hpp` header files, such as:
     - `torch/csrc/autograd/functions/comm.h`
 
-- 配置文件。示例：
+- Configuration files, such as:
     - `aten/src/ATen/ATenConfig.cmake.in` 
     - `aten/src/ATen/Config.h.in` 
     - `aten/src/ATen/native/native_functions.yaml`  
     - `aten/src/ATen/native/tags.yaml`
     - `aten/src/ATen/native/ts_native_functions.yaml`
 
-- 模板文件。示例：
+- Template files, such as:
     - `aten/src/ATen/templates`
 
-- 打桩文件。示例：
+- Stub files, such as:
     - `torch/csrc/stub.c`
 
-### 目录重构
+### Directory restructuring
 
-CUDA代码解耦出来后，下一步便是要将其重新组织到新的目录结构下。在目录重构方面，我们首先调研了[AMD(gpu)](https://github.com/ROCm/pytorch)、[Google(TPU)](https://github.com/pytorch/xla/tree/master)、[Intel(XPU)](https://github.com/intel/intel-extension-for-pytorch)、[Ascend(NPU)](https://gitee.com/ascend/pytorch)、[Cambricon(MLU)](https://github.com/Cambricon/torch_mlu/tree/r2.4_develop)等多个超算卡厂商适配pytorch的方式，分析了各厂商适配PyTorch的代码目录结构、相似和特异性改动点。在此基础上，我们对Fig. 1所示的CUDA代码目录结构重构如Fig. 2所示。
+After decoupling the CUDA code, the next step is to reorganize it into a new directory structure. Regarding directory restructuring, we first investigated the approaches used by several hardware vendors—such as [AMD (GPU)](https://github.com/ROCm/pytorch), [Google (TPU)](https://github.com/pytorch/xla/tree/master), [Intel (XPU)](https://github.com/intel/intel-extension-for-pytorch), [Ascend (NPU)](https://gitee.com/ascend/pytorch), and [Cambricon (MLU)](https://github.com/Cambricon/torch_mlu/tree/r2.4_develop) to adapt PyTorch to their hardwares. We analyzed their codebase directory structures, as well as the commonalities and specific modifications made during integration. Based on the analysis, we restructured the CUDA code directory layout shown in Fig. 1 into the new design as illustrated in Fig. 2.
 
 <div style="text-align: center;">
     <img src="./RFC-0039-assets/restructured-dirs.png" alt="restructured-dirs" style="width:80%;">
     <p>Fig. 2 Restructured directories for CUDA codes</p>
 </div>
 
-下面对Fig. 2所示的重构目录进行说明。
+In the following, we shall give an introduction to the restructured directory hierarchy (see Fig. 2).
 
-- 在pytorch home目录下创建`third_device/`目录，用于存放第三方硬件适配PyTorch的代码。其中，CUDA适配PyTorch的代码将放在`third_device/torch_cuda`目录下。
+- Create a `third_device/` directory under the PyTorch home directory to store code for third-party hardware backends integrating with PyTorch. The code for CUDA's integration with PyTorch will be placed under the `third_device/torch_cuda` directory.
 
-- `third_device/torch_cuda`目录包含`third_device/torch_cuda/torch_cuda`和`third_device/torch_cuda/torch_patches`2个子目录，其中`third_device/torch_cuda/torch_cuda`目录是主体，用于存放前述解耦出来的CUDA的代码；`third_device/torch_cuda/torch_patches`目录则用于存放过渡期的一些patch（详见[Unresolved questions](#unresolved-questions)小节）。
+- The `third_device/torch_cuda` directory contains two subdirectories: `third_device/torch_cuda/torch_cuda` and `third_device/torch_cuda/torch_patches`. The `third_device/torch_cuda/torch_cuda` directory is the main one, used to store the CUDA code decoupled as described earlier; the `third_device/torch_cuda/torch_patches` directory is used to store temporary patches during the transition period (see [Unresolved Questions](#unresolved-questions) section for details).
 
-- `third_device/torch_cuda/torch_cuda`目录下包含了python文件集合（主要包含`third_device/torch_cuda/torch_cuda/backends`和`third_device/torch_cuda/torch_cuda/core`）目录和C/C++文件集合（主要为`third_device/torch_cuda/torch_cuda/csrc`目录）。
+- The `third_device/torch_cuda/torch_cuda` directory contains a collection of Python files (composed of two sub-directories `third_device/torch_cuda/torch_cuda/backends` and `third_device/torch_cuda/torch_cuda/core`) and  a collection of C/C++ files (mainly located in the `third_device/torch_cuda/torch_cuda/csrc` directory).
 
-- `third_device/torch_cuda/torch_cuda/backends`和`third_device/torch_cuda/torch_cuda/core`分别对应Fig. 1中的`torch/backends`和`torch/cuda`。
+- The `third_device/torch_cuda/torch_cuda/backends` directory and `third_device/torch_cuda/torch_cuda/core` directory correspond to `torch/backends` directory and `torch/cuda` directory in Fig. 1, respectively.
 
-- `third_device/torch_cuda/torch_cuda/csrc`目录由`third_device/torch_cuda/torch_cuda/csrc/aten`、`third_device/torch_cuda/torch_cuda/csrc/framework`、`third_device/torch_cuda/torch_cuda/csrc/jit`和`third_device/torch_cuda/torch_cuda/csrc/framework`等4个子目录构成。
+- The `third_device/torch_cuda/torch_cuda/csrc` directory consists of four sub-directories: `third_device/torch_cuda/torch_cuda/csrc/aten`, `third_device/torch_cuda/torch_cuda/csrc/framework`, `third_device/torch_cuda/torch_cuda/csrc/jit`, and `third_device/torch_cuda/torch_cuda/csrc/framework`.
 
-- `third_device/torch_cuda/torch_cuda/csrc/aten`对Fig. 1中的`torch/aten`和`torch/caffe2`目录进行了合并。
+- The `third_device/torch_cuda/torch_cuda/csrc/aten` directory merges the two directories of `torch/aten` and `torch/caffe2` in Fig. 1.
 
-- `third_device/torch_cuda/torch_cuda/csrc/framework`主要由Fig. 1中的`torch/csrc/cuda`和`torch/csrc/distributed`等2部分构成。
+- The `third_device/torch_cuda/torch_cuda/csrc/framework` directory is mainly composed of `torch/csrc/cuda` and `torch/csrc/distributed` directories shown in Fig. 1.
 
-- `third_device/torch_cuda/torch_cuda/csrc/jit`对应于Fig. 1中的`torch/csrc/jit`的CUDA实现
+- The `third_device/torch_cuda/torch_cuda/csrc/jit` directory corresponds to the CUDA-specific portion in `torch/csrc/jit` directory presented in Fig. 1.
 
-- 最后，`third_device/torch_cuda/torch_cuda/csrc/pybinding`目录则用于存放C++到Python接口的python bingding codes
+- Finally, the `third_device/torch_cuda/torch_cuda/csrc/pybinding` directory is used to store the Python binding codes from C/C++ to Python.
 
-### 编译工程优化
-本方案针对PyTorch原生CUDA设备编译流程进行了以下关键性改进：
+### Project building optimization
 
-- **编译逻辑解耦**  
-   将CUDA编译系统从主框架解耦为独立工程，构建两大核心组件：
-  
+This RFC proposal has made the following key improvements/changes to the native PyTorch CUDA device build process.
+
+- *Standalone build project for CUDA*. We decouple the building process for CUDA as a standalone project, and outcomes two main components:
   - `torch_cuda`  
-    - 设备抽象层与运行框架  
-    - 设备资源管理  
-    - 算子实现（原生/native、加速库/cuBLAS/cuDNN/linalg、自定义）
-  
+    - Framework and kernels  
+    - Device management  
+    - JIT compile engine
+    - Linear algebra
   - `torch_python_cuda`
-    - 基于pybind11的Python-C++交互接口
-    - 针对新设备的跨语言类型系统桥接层，实现设备后端与Python层的双向解耦
+    - Python module and APIs
 
-- **CMake工程化封装**  
-   基于`tools.setup_helpers.cmake`封装`wrapped_cmake`构建工具：
-  
-  - 标准化设备后端编译工具链
-  - 实现：编译参数统一配置、环境自动初始化、编译器特性适配
+- *Wrapped cmake toolkit*. We wrap and develop a `wrapped_cmake` build tool based on `tools.setup_helpers.cmake`.
+  - A standard build toolkit for PyTorch backend integration
+  - Achieving unified configuration of compilation parameters, automatic environment initialization, and compiler feature adaptation
 
-- **模块化隔离架构**  
-  
-  - 分离出独立设备模块`_CUDAC.cpython-XX.so`，具备独立初始化链路
-  - 统一新设备专用扩展构建器`torch.utils.cpp_extension.NewDeviceCppExtension`，实现编译环境与核心框架的物理隔离
+- *Better modularization*.
+  - Decoupling CUDA module `_CUDAC.cpython-XX.so` that can be independently initialized
+  - Unifying the dedicated extension builder `torch.utils.cpp_extension.NewDeviceCppExtension` for new backends
   
 <div style="text-align: center;">
     <img src="RFC-0039-assets/build-refactor.png" alt="compiling" style="width: 80%;">
@@ -244,7 +245,7 @@ CUDA代码解耦出来后，下一步便是要将其重新组织到新的目录�
 理想情况下pytroch应该作为一种与硬件无关的深度学习框架，就像操作系统一样对于使用者屏蔽底层硬件实现细节，并提供经过抽象的和便于使用的接口，这些接口不应该涉及任何和底层硬件实现有关的信息。Pytorch自定义一套与底层硬件无关的硬件抽象层，统一差异化的硬件接口（集合通信），使上层系统组件无需关注具体硬件实现，同时方便各个硬件厂商对接自己的硬件。然而现实情况和上面有差异，主要是以下几点。
 
 1. 直接指定底层硬件
-   实际在使用pytorch的时候，经常涉及到在代码中直接指定底层硬件的情况，例如torch.tensor([3,4]).cuda()，假如在切换到第三方硬件后，pytorch的用户还需要对代码做不通程度的修改，而且由于缺乏硬件抽象，对于第三方的接入使用没有强制性的规定，导致用户代码在切换不同的底层硬件时所做的的修改不完全一样，给代码的通用性带来了挑战。
+   实际在使用pytorch的时候，经常涉及到在代码中直接指定底层硬件的情况，例如`torch.tensor([3,4]).cuda()`，假如在切换到第三方硬件后，pytorch的用户还需要对代码做不通程度的修改，而且由于缺乏硬件抽象，对于第三方的接入使用没有强制性的规定，导致用户代码在切换不同的底层硬件时所做的的修改不完全一样，给代码的通用性带来了挑战。
 2. pytorch和cuda的强依赖
    pytorch源码中直接涉及到调用cuda的接口，这导致了新的cuda版本发布后，需要等pytorch官方适配，pytorch此外代码中充斥了对cuda头文件的引用，需要通过设置对应的环境变量加以屏蔽，不便于用户理解。
 3. 第三方硬件接入困难
@@ -296,7 +297,7 @@ What other designs have been considered? What is the impact of not doing this?
 
 总体而言，Cambricon 和摩尔线程都通过插件式、补丁式改造方式实现了 CUDA 编译逻辑的拆分：前者需要维护带补丁的 PyTorch 分支，后者则在保持主 PyTorch 源兼容的基础上提供独立扩展包，两者都在实践中支持了各自设备的动态加载与调用。
 
-## **Unresolved questions**
+## **Unresolved Questions**
 由于PyTorch 原生代码所存在的一些待解决问题，以及构建流程的变化，我们需要对一些未分离的代码（也即非CUDA代码）进行少量的改动。为避免直接对Pytorch代码进行侵入式修改，我们将这些改动作为patch并统一放置在`third_device/torch_cuda/torch_patches`目录下作为过渡性的解决方案。在构建开始之前，我们应先apply这些patch。
 
 下面给出patch的两个例子。
