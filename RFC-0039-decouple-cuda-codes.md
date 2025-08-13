@@ -49,10 +49,10 @@ This RFC proposal aims to fully integrate the strengths of both approaches while
 
 Looking across the PyTorch codebase, CUDA-related code is scattered across multiple directories. These directories span various functional modules of PyTorch, as illustrated in Fig. 1 below:
 
-<div style="text-align: center;">
-    <img src="./RFC-0039-assets/CUDA-related-dirs.png" alt="CUDA-related-dirs" style="width:60%;">
-    <p>Fig. 1 CUDA related directories and their functionalities</p>
-</div>
+<p align="center">
+    <img src="./RFC-0039-assets/CUDA-related-dirs.png" alt="CUDA-related-dirs" style="width:60%;"><br>
+    <em>Fig. 1 CUDA related directories and their functionalities</em>
+</p>
 
 Our main task is to extract the above-mentioned CUDA-related code from their respective directories and reorganize them under a redesigned and optimized directory structure.
 
@@ -187,10 +187,10 @@ Moreover, to enable standalone compilation of CUDA, files required by CUDA compi
 
 After decoupling the CUDA code, the next step is to reorganize it into a new directory structure. Regarding directory restructuring, we first investigated the approaches used by several hardware vendors—such as [AMD (ROCm)](https://github.com/ROCm/pytorch), [Google (TPU)](https://github.com/pytorch/xla/tree/master), [Intel (XPU)](https://github.com/intel/intel-extension-for-pytorch), [Ascend (NPU)](https://gitee.com/ascend/pytorch), and [Cambricon (MLU)](https://github.com/Cambricon/torch_mlu/tree/r2.4_develop) to adapt PyTorch to their hardwares. We analyzed their codebase directory structures, as well as the commonalities and specific modifications made during integration. Based on the analysis, we restructured the CUDA code directory layout shown in Fig. 1 into the new design as illustrated in Fig. 2.
 
-<div style="text-align: center;">
-    <img src="./RFC-0039-assets/restructured-dirs.png" alt="restructured-dirs" style="width:80%;">
-    <p>Fig. 2 Restructured directories for CUDA codes</p>
-</div>
+<p align="center">
+  <img src="./RFC-0039-assets/restructured-dirs.png" alt="restructured-dirs" style="width:80%;"><br>
+  <em>Fig. 2 Restructured directories for CUDA codes</em>
+</p>
 
 In the following, we shall give an introduction to the restructured directory hierarchy (see Fig. 2).
 
@@ -233,10 +233,10 @@ This RFC proposal has made the following key improvements/changes to the native 
   - Decoupling CUDA module `_CUDAC.cpython-XX.so` that can be independently initialized
   - Unifying the dedicated extension builder `torch.utils.cpp_extension.NewDeviceCppExtension` for new backends
   
-<div style="text-align: center;">
-    <img src="RFC-0039-assets/build-refactor.png" alt="compiling" style="width: 80%;">
-    <p>Fig. 3 CUDA codes building (left: current; right: refactored)</p>
-</div>
+<p align="center">
+    <img src="RFC-0039-assets/build-refactor.png" alt="compiling" style="width: 80%;"><br>
+    <em>Fig. 3 CUDA codes building (left: current; right: refactored)</em>
+</p>
 
 ## 优缺点（1人）   付泽伟
 
