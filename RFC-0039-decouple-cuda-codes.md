@@ -30,18 +30,14 @@ This RFC proposal aims to fully integrate the strengths of both approaches while
 - Redesign the build system to support standalone compilation of the CUDA backend, simplifying the build process, reducing dependencies, and enabling faster incremental builds.
 - Provide a consistent template for integrating new third-party hardware backends. This reduces integration complexity and time-to-market, while enhancing consistency and pluggability across the PyTorch backend integration mechanism.
 
-## **Motivation**（1人）祝贺
-传统上，NVIDIA GPU与CUDA架构长期作为PyTorch生态中唯一的并行计算解决方案。随着越来越多的厂家推出自己的高效能计算设备，如寒武纪MLU、Graphcore IPU等，当前生态暴露出以下关键问题：
-- 重复开发成本：各厂商独立开发设备适配层，导致重复编写
-- 接口碎片化：不同硬件平台的API命名规则与实现方式差异显著，迫使用户维护多套设备专用代码。
-- 操作复杂性：尽管部分厂商通过PrivateUse1机制实现基础接入，但设备管理语义与算子命名仍未统一
-这种生态分裂现状与PyTorch硬件无关性的设计理念产生直接冲突，导致跨平台模型部署效率低下、硬件依赖性的研究复现困难、新型计算架构接入成本居高不下。
+## **Motivation**
 
-该方案的贡献：
-- 抽象与标准化：对现有不同厂商的适配代码进行全面梳理，提取共性，将适配代码的命名和架构统一至PrivateUse1标准下，确保从前端到后端的一致性，减少不必要的重命名步骤。最终，让人工智能模型开发者在对设备无感的情况下使用pytorch。
-- 代码复用与通用性提升：通过详细的调用栈分析，识别并抽象出如设备管理(device)、流(stream)管理、事件(event)处理等通用组件，形成一套统一的接口规范。这样，各厂商仅需关注实现这些通用接口的底层硬件特定逻辑，大幅降低适配成本和复杂度。
-- 简化接入流程：建立一套标准化的接入流程指南，指导新加入的厂商如何快速、高效地基于PrivateUse1标准实现其硬件适配，确保新适配代码的高效整合与兼容性。
-- 开源社区协作与生态建设：通过统一的适配模式，鼓励各厂商共享适配经验，促进技术交流，推动不同显卡生态在PyTorch框架中的成熟与发展，使得PyTorch不再是某几种GPU硬件设备的专利，而是成为高性能计算领域最通用的框架。
+For a long time, NVIDIA GPUs and the CUDA architecture have dominated the PyTorch ecosystem. However, as an increasing number of vendors introduce their own high-performance AI chips, the current ecosystem is revealing the following key issues:
+- *Code coupling*. The CUDA code is too tightly coupled with the PyTorch codebase, resulting in poor modularity and high maintenance costs.
+- *Integration effort*. Currently, different hardware backends may adopt varying integration methods into PyTorch. The integration approaches and code lack standardization and uniformity, leading to a significant amount of repetitive code during the integration process. Overall, the integration effort is substantial.
+- *Code migration*. Due to the lack of integration code specification, different hardware backends provide APIs with varying names and styles, resulting in high code migration costs for PyTorch users.
+
+Therefore, to address issues such as the excessive coupling of CUDA code, and to improve the standardization, readability, scalability, and maintainability of third-party device integration code into PyTorch, we propose this RFC proposal.
 
 ## **Proposed Implementation**
 
@@ -51,7 +47,7 @@ Looking across the PyTorch codebase, CUDA-related code is scattered across multi
 
 <p align="center">
     <img src="./RFC-0039-assets/CUDA-related-dirs.png" alt="CUDA-related-dirs" style="width:60%;"><br>
-    <em>Fig. 1 CUDA related directories and their functionalities</em>
+    <em>Fig. 1. CUDA related directories and their functionalities</em>
 </p>
 
 Our main task is to extract the above-mentioned CUDA-related code from their respective directories and reorganize them under a redesigned and optimized directory structure.
@@ -189,7 +185,7 @@ After decoupling the CUDA code, the next step is to reorganize it into a new dir
 
 <p align="center">
   <img src="./RFC-0039-assets/restructured-dirs.png" alt="restructured-dirs" style="width:80%;"><br>
-  <em>Fig. 2 Restructured directories for CUDA codes</em>
+  <em>Fig. 2. Restructured directories for CUDA codes</em>
 </p>
 
 In the following, we shall give an introduction to the restructured directory hierarchy (see Fig. 2).
@@ -235,37 +231,18 @@ This RFC proposal has made the following key improvements/changes to the native 
   
 <p align="center">
     <img src="RFC-0039-assets/build-refactor.png" alt="compiling" style="width: 80%;"><br>
-    <em>Fig. 3 CUDA codes building (left: current; right: refactored)</em>
+    <em>Fig. 3. CUDA codes building (left: current; right: refactored)</em>
 </p>
 
-## **Metrics** 付泽伟
+## **Metrics and Drawbacks**
 
-理想情况下pytroch应该作为一种与硬件无关的深度学习框架，就像操作系统一样对于使用者屏蔽底层硬件实现细节，并提供经过抽象的和便于使用的接口，这些接口不应该涉及任何和底层硬件实现有关的信息。Pytorch自定义一套与底层硬件无关的硬件抽象层，统一差异化的硬件接口（集合通信），使上层系统组件无需关注具体硬件实现，同时方便各个硬件厂商对接自己的硬件。然而现实情况和上面有差异，主要是以下几点。
+### Metrics
+- Achieving better modularization and structure of CUDA code, and making the code easier to maintain
+- Can server as a template for backend integration into PyTorch for different vendors and reducing their integration effort
+- Users may use the identical PyTorch CUDA APIs to write their code (device-agnostic code), thus reducing the code migration cost between different backends
 
-1. 直接指定底层硬件
-   实际在使用pytorch的时候，经常涉及到在代码中直接指定底层硬件的情况，例如`torch.tensor([3,4]).cuda()`，假如在切换到第三方硬件后，pytorch的用户还需要对代码做不通程度的修改，而且由于缺乏硬件抽象，对于第三方的接入使用没有强制性的规定，导致用户代码在切换不同的底层硬件时所做的的修改不完全一样，给代码的通用性带来了挑战。
-2. pytorch和cuda的强依赖
-   pytorch源码中直接涉及到调用cuda的接口，这导致了新的cuda版本发布后，需要等pytorch官方适配，pytorch此外代码中充斥了对cuda头文件的引用，需要通过设置对应的环境变量加以屏蔽，不便于用户理解。
-3. 第三方硬件接入困难
-   目前pytorch提供了privateuse1的DispatechKey，为开发者提供了一种扩展硬件的方式，然后在厂商的实际使用中还是存在问题，例如1.无法同时接入两个不同的后端，2.代码的侵入性强，需要在Pytorch框架层面修改核心组件例如（storage模块，device manange模块），这导致与官方代码的耦合度高，而且无法跟随Pytorch的版本自动升级。
-   我们提出的cuda代码抽象分离方案就是在看到以上问题的基础上提出的，主要具有以下的优点：
-4. 对使用者屏蔽底层硬件实现
-   我们自定义了一套对底层的硬件抽象层，规定了在接入第三方硬件时应该实现的接口和调用规则，在用户使用层面，用户不用直接使用cuda这样的关键字，我们自定义了一套通用的关键字（cuda对应pu1，nccl对应pccl），底层硬件改变后对用户是无感的，用户不用频繁修改代码，真正做到一套代码全平台运行。
-5. 解除pytorch和cuda代码的强依赖
-   我们将cuda设备视为一个和第三方硬件一样的可接入的硬件，对cuda设备的接入方式和所有第三方硬件一致，并从pytorch代码中删除了对cuda的依赖，这样pytorch的版本升级不用和cuda升级同步，给双方留下的最大的灵活性。
-6. 方便接入第三方硬件
-   以往的第三方硬件接入过程中，各个厂商分别实现接入代码，导致代码臃肿和功能重复，现在我们提供了硬件抽象层的基类实现，一些通用的功能已经实现完毕，并预留出了和硬件强相关的接口，各个厂商只需要按照要求实现这些接口即可实现硬件接入pytorch。由于通用了代码，当框架代码升级时第三方硬件也能自动享受框架升级带来的性能提升。
-
-## **Drawbacks** 付泽伟
-
-Are there any reasons why we should not do this? Here we aim to evaluate risk and check ourselves.
-
-Please consider:
-
-* is it a breaking change?
-* Impact on UX
-* implementation cost, both in terms of code size and complexity
-* integration of this feature with other existing and planned features
+### Drawbacks
+- Implementing this RFC proposal may result in a breaking change to the codebase
 
 ## **Alternatives**
 
@@ -320,7 +297,7 @@ We hope that, with the collective effort of the PyTorch community, these patches
 
 ## **Next Steps**
 
-Implementing this RFC proposal is a two-phase process. In the short term (phase 1), we shall implement code decoupling and directory restructuring for the CUDA backend. In the long term (phase 1), we will integrate more new backends using the proposed plan.
+Implementing this RFC proposal is a two-phase process. In the short term (phase 1), we shall implement code decoupling and directory restructuring for the CUDA backend. In the long term (phase 2), we will integrate more new backends using the proposed plan.
 
 *Phase 1*: CUDA code decoupling and directory restructuring
 - CUDA code decoupling
