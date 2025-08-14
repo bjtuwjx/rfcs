@@ -212,7 +212,7 @@ In the following, we shall give an introduction to the restructured directory hi
 
 This RFC proposal has made the following key improvements/changes to the native PyTorch CUDA device build process.
 
-- *Standalone build project for CUDA*. We decouple the building process for CUDA as a standalone project, and outcomes two main components:
+- *Standalone build project for CUDA*. We decouple the building process for CUDA as a standalone project, producing two main components:
   - `torch_cuda`  
     - Framework and kernels  
     - Device management  
