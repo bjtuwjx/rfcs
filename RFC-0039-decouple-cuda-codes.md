@@ -165,7 +165,7 @@ Some CUDA code is directly coupled with common code or code for other device bac
   register_cuda_runner("cuda", &create_aoti_runner_cuda)
   ```
 
-Moreover, to enable standalone compilation of CUDA, files required by CUDA compilation also need to be decoupled or migrated. The types of files that need to be supplemented include:
+Moreover, to enable standalone compilation of CUDA code, files required by CUDA compilation also need to be decoupled or migrated. The types of files that need to be supplemented include:
 
 - `*.h`、`*.hpp` header files, such as:
     - `torch/csrc/autograd/functions/comm.h`
@@ -238,9 +238,7 @@ This RFC proposal has made the following key improvements/changes to the native 
     <em>Fig. 3 CUDA codes building (left: current; right: refactored)</em>
 </p>
 
-## 优缺点（1人）   付泽伟
-
-## **Metrics **
+## **Metrics** 付泽伟
 
 理想情况下pytroch应该作为一种与硬件无关的深度学习框架，就像操作系统一样对于使用者屏蔽底层硬件实现细节，并提供经过抽象的和便于使用的接口，这些接口不应该涉及任何和底层硬件实现有关的信息。Pytorch自定义一套与底层硬件无关的硬件抽象层，统一差异化的硬件接口（集合通信），使上层系统组件无需关注具体硬件实现，同时方便各个硬件厂商对接自己的硬件。然而现实情况和上面有差异，主要是以下几点。
 
@@ -258,7 +256,7 @@ This RFC proposal has made the following key improvements/changes to the native 
 6. 方便接入第三方硬件
    以往的第三方硬件接入过程中，各个厂商分别实现接入代码，导致代码臃肿和功能重复，现在我们提供了硬件抽象层的基类实现，一些通用的功能已经实现完毕，并预留出了和硬件强相关的接口，各个厂商只需要按照要求实现这些接口即可实现硬件接入pytorch。由于通用了代码，当框架代码升级时第三方硬件也能自动享受框架升级带来的性能提升。
 
-## **Drawbacks **
+## **Drawbacks** 付泽伟
 
 Are there any reasons why we should not do this? Here we aim to evaluate risk and check ourselves.
 
@@ -269,19 +267,17 @@ Please consider:
 * implementation cost, both in terms of code size and complexity
 * integration of this feature with other existing and planned features
 
-## **Alternatives**   洪泓
+## **Alternatives**
 
-What other designs have been considered? What is the impact of not doing this?
+There are two possible placement strategies for the decoupled CUDA code:
 
-代码有以下两种放置方案：
+- In-tree
 
-- in-tree
+  Create a new directory `pytorch/third_device/torch_cuda` within the PyTorch codebase to place the separated code. The build process is integrated into the PyTorch build system. Before compilation, modifications to the native PyTorch code are applied in the form of patches. This approach enables seamless integration into the PyTorch ecosystem, allowing synchronized development and version updates with PyTorch. It offers higher security, better stability, strong compatibility, and eliminates the need for additional code adaptation and testing.
 
-在Pytorch代码下新建目录pytorch/third_device/torch_cuda放入分离后代码，编译过程融入Pytorch编译中，编译前通过patch形式对Pytorch原生代码进行修改，可以无缝集成到 PyTorch 生态系统中，和PyTorch进行同步开发和版本更新，安全性和稳定性更高，兼容性好，不需要再进行额外的代码适配和测试。
+- Out-of-tree
 
-- out-of-tree
-
-不将代码直接集成到主代码库中，新建仓库对代码独立进行编译和维护，使用时以插件形式接入Pytorch，不对Pytorch原生代码进行侵入式修改，可以提高代码灵活性并降低代码维护成本，开发者可以在不影响主项目的情况下，自由地进行代码改进、修复漏洞和添加新功能，实现快速迭代和测试。
+  The decoupled code is not directly integrated into the PyTorch main codebase. Instead, a separate repository is created to independently place the code. It is plugged into PyTorch as a plugin when used, without making invasive modifications to the native PyTorch code. This approach enhances code flexibility and reduces maintenance costs. Developers can freely improve the code, fix bugs, and add new features without affecting the PyTorch main project, thus enabling rapid iteration and testing.
 
 ## **Prior Art**（1人） 崔巍
 
@@ -323,29 +319,23 @@ Below are two examples of patches.
 
 We hope that, with the collective effort of the PyTorch community, these patches can eventually be eliminated.
 
-## Next Steps（1人）侯丽亚
+## **Next Steps**
 
-Will implement it. 
+Implementing this RFC proposal is a two-phase process. In the short term (phase 1), we shall implement code decoupling and directory restructuring for the CUDA backend. In the long term (phase 1), we will integrate more new backends using the proposed plan.
 
-Phase 1: 代码解耦与目录重构 (预计周期: 2个月)
+*Phase 1*: CUDA code decoupling and directory restructuring
+- CUDA code decoupling
+  - CUDA C/C++ code decoupling
+  - Python binding code decoupling
+  - Python code decoupling
+- Directory restructuring
+  - Migrate decoupled code into new directory hierarchy
+  - Supplement necessary header/source/configuration code
+- Building system refactoring
+  - Develop wrapped cmake toolkit
+  - Make standalone build project for CUDA
+  - Implement dedicated extension builder
 
-1. 核心模块解耦
-  - 完成 `aten/src/ATen/cuda` 和 `c10/cuda` 的代码分离，建立独立编译单元
-  - 重构 `torch/csrc/cuda` 的 Python-C++ 绑定层，确保与核心框架解耦
-  - 验证分布式 (`distributed/c10d/cuda`) 和性能分析 (`profiler/stubs/cuda`) 模块的插件化可行性
-2. 目录结构调整
-  - 迁移 CUDA 相关代码至新目录结构（如 `csrc/framework/cuda`）
-  - 标准化 backends/ 下的 Python 接口，统一命名规范（如 `torch.backends.pu1` 替代 `torch.backends.cuda`）
-3. 构建系统适配
-  - 实现 torch_cuda 和 torch_python_cuda 的独立 CMake 工程
-  - 统一新设备专用扩展构建器 `torch.utils.cpp_extension.NewDeviceCppExtension` ，支持多后端编译隔离
-
-Phase 2: 兼容性测试与第三方硬件接入 (预计周期: 1个月)
-
-1. 向后兼容性保障
-  - 维护 torch.cuda.* 的临时别名，通过 Deprecation Warning 引导用户迁移至 torch.pu1.*
-  - 测试现有 CUDA 模型的兼容性（重点验证 is_cuda() 等调用的替换逻辑）
-  - 编写《硬件后端接入指南》
-2. 第三方厂商协作
-  - 与 moer 等厂商合作，验证 PrivateUse1 接入路径的可行性
-  - 编写《硬件后端接入指南》
+*Phase 2*: More third-party hardware backends integration
+- Intreating third-party hardware backends into PyTorch using CUDA key based on the decoupled methodology
+- Unifying the integration of CUDA backends and other backends using the same key (e.g., PrivateUse1 key)
