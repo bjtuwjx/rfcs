@@ -304,7 +304,9 @@ We hope that, with the collective effort of the PyTorch community, these patches
 
 ## **Next Steps**
 
-Implementing this RFC proposal is a two-phase process. In the short term (phase 1), we shall implement code decoupling and directory restructuring for the CUDA backend. In the long term (phase 2), we will integrate more new backends using the proposed plan.
+If the RFC proposal is accepted, our team plans to implement it. In fact, we have already validated the decoupling and refactoring scheme on PyTorch v2.0.1 and v2.6.0. We are eager to continue to implementing and optimizing this solution on the latest PyTorch main branch.
+
+In summary, implementing this RFC proposal is envisioned as a two-phase process. In the short term (phase 1), we shall implement code decoupling and directory restructuring for the CUDA backend. In the long term (phase 2), we will integrate more new backends using the proposed plan.
 
 *Phase 1*: CUDA code decoupling and directory restructuring
 - CUDA code decoupling
@@ -321,4 +323,3 @@ Implementing this RFC proposal is a two-phase process. In the short term (phase 
 
 *Phase 2*: More third-party hardware backends integration
 - Intreating third-party hardware backends into PyTorch using CUDA key based on the decoupled methodology
-- Unifying the integration of CUDA backends and other backends using the same key (e.g., PrivateUse1 key)
