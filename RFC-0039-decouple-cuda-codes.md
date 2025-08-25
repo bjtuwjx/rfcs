@@ -220,9 +220,9 @@ This RFC proposal has made the following key improvements/changes to the native 
     - JIT compile engine
     - Linear algebra
   - `torch_python_cuda`
-    - Python bindings
+    - Python bindings and APIs
   - `torch_CUDAC`
-    - Python module and APIs
+    - Python module
 
 - *Wrapped cmake toolkit*. We wrap and develop a `wrapped_cmake` build tool based on `tools.setup_helpers.cmake`.
   - A standard build toolkit for PyTorch backend integration
@@ -233,7 +233,7 @@ This RFC proposal has made the following key improvements/changes to the native 
   - Unifying the dedicated extension builder `torch.utils.cpp_extension.NewDeviceCppExtension` for new backends
   
 <p align="center">
-    <img src="RFC-0039-assets/build-refactor.png" alt="build-libs" style="width: 80%;"><br>
+    <img src="RFC-0039-assets/build-refactor.png" alt="build-libs" style="width: 90%;"><br>
     <em>Fig. 3. CUDA code build libs (left: current; right: refactored)</em>
 </p>
 
@@ -241,21 +241,25 @@ This RFC proposal has made the following key improvements/changes to the native 
 
 ### Metrics
 - Achieving better modularization and structure of CUDA code, and making the code easier to maintain
-- Can server as a template for backend integration into PyTorch for different vendors and reducing their integration effort
+- Can server as a standardized workflow and mechanism for backend integration into PyTorch for different vendors and reducing their integration effort
 - Users may use the identical PyTorch CUDA APIs to write their code (device-agnostic code), thus reducing the code migration cost between different backends
 
 ### Drawbacks
-- Implementing this RFC proposal may result in a breaking change to the codebase
+- Implementing this RFC proposal may result in a breaking change to the codebase. To mitigate this impact, we propose adopting a smooth transition strategy:
+  - *Decouple CUDA Code*: Decouple and place the CUDA code into a new directory. This initial step is non-disruptive and will not affect the existing codebase or build process.
+  - *Introduce Build Flag*: Define a new build flag (e.g., USE_CUDA_INDEP) and allow PyTorch developers/users to between the current (legacy) build method and the new, refactored approach.
+  - *Deprecate Legacy Method*: Mark the original method of building the CUDA code as deprecated. This provides clear guidance and a timeline for users to migrate.
+  - *Complete Transition*: After a suitable deprecation period, remove the legacy CUDA code from the main codebase and fully transition to supporting only the refactored build method.
 
 ## **Alternatives**
 
 There are two possible placement strategies for the decoupled CUDA code:
 
-- In-tree
+- In-tree strategy
 
   Create a new directory `pytorch/third_device/torch_cuda` within the PyTorch codebase to place the separated code. The build process is integrated into the PyTorch build system. Before compilation, modifications to the native PyTorch code are applied in the form of patches. This approach enables seamless integration into the PyTorch ecosystem, allowing synchronized development and version updates with PyTorch. It offers higher security, better stability, strong compatibility, and eliminates the need for additional code adaptation and testing.
 
-- Out-of-tree
+- Out-of-tree strategy
 
   The decoupled code is not directly integrated into the PyTorch main codebase. Instead, a separate repository is created to independently place the code. It is plugged into PyTorch as a plugin when used, without making invasive modifications to the native PyTorch code. This approach enhances code flexibility and reduces maintenance costs. Developers can freely improve the code, fix bugs, and add new features without affecting the PyTorch main project, thus enabling rapid iteration and testing.
 
