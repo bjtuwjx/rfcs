@@ -57,7 +57,7 @@ In terms of code origin, decoupling CUDA code primarily involves two levels: int
 
 #### Inter-file level decoupling
 
-The inter-file level CUDA code decoupling can be done with the help of directory names, file names, or file name suffixes.
+In the PyTorch codebase, some CUDA code is located within dedicated directories or files. This organization allows for straightforward identification of CUDA code based on directory names, file names, or file name suffixes. The following examples illustrate these three scenarios:
 
 - Directory names containing the words `cuda`, `cudnn`, or `THC`, etc. For example:
 
@@ -86,7 +86,7 @@ The inter-file level CUDA code decoupling can be done with the help of directory
 
     - `torch/csrc/distributed/c10d/quantization/quantization_gpu.cu`
 
-In fact, some file-level CUDA code has already been well categorized by the build configuration files (such as `CMakeLists.txt` and `*.bzl`) in the codebase. Therefore, we can also leverage these build configuration files to help identify and collect inter-file level CUDA code.
+In fact, some inter-file level CUDA code has already been well categorized by the build configuration files (such as `CMakeLists.txt` and `*.bzl`) in the codebase. Therefore, we can also leverage these build configuration files to help identify and collect inter-file level CUDA code.
 
 - Example 1：using `aten\src\ATen\CMakeLists.txt` to decouple CUDA code within the directory of `aten\src\ATen\native\miopen`
 
@@ -202,17 +202,26 @@ In the following, we shall give an introduction to the restructured directory hi
 
 - Finally, the `third_device/torch_cuda/torch_cuda/csrc/pybinding` directory is used to store the Python binding codes from C/C++ to Python.
 
-### Project building optimization
+### Project build optimization
+
+Since CPU code and CUDA code is tightly coupled in current PyTorch codebase, the build process for these code is also closely interconnected. The CPU code and CUDA code is built in a single stage process and will eventually built into unified shared libs, e.g., `libtorch`, `libtorch_python` and `lib_C` (see Fig. 2 (left)).
+
+<p align="center">
+    <img src="RFC-0039-assets/overall-build-process.png" alt="build-stages" style="width: 90%;"><br>
+    <em>Fig. 2. PyTorch code build process. Left shows the current build process, where CPU and CUDA code is built in a single stage. Right shows the refactored build process, where CPU code build and CUDA code build are two independent processes.</em>
+</p>
 
 This RFC proposal has made the following key improvements/changes to the native PyTorch CUDA device build process.
 
-- *Standalone build project for CUDA*. We decouple the building process for CUDA as a standalone project, producing two main components:
+- *Standalone build project for CUDA*. We decouple the build process for CUDA as a standalone project (see Fig. 2 (right)), resulting a two-stage build process (i.e., torch_cpu and torch_cuda stages) and producing three main components (see Fig. 3):
   - `torch_cuda`  
     - Framework and kernels  
     - Device management  
     - JIT compile engine
     - Linear algebra
   - `torch_python_cuda`
+    - Python bindings
+  - `torch_CUDAC`
     - Python module and APIs
 
 - *Wrapped cmake toolkit*. We wrap and develop a `wrapped_cmake` build tool based on `tools.setup_helpers.cmake`.
@@ -224,8 +233,8 @@ This RFC proposal has made the following key improvements/changes to the native 
   - Unifying the dedicated extension builder `torch.utils.cpp_extension.NewDeviceCppExtension` for new backends
   
 <p align="center">
-    <img src="RFC-0039-assets/build-refactor.png" alt="compiling" style="width: 80%;"><br>
-    <em>Fig. 3. CUDA codes building (left: current; right: refactored)</em>
+    <img src="RFC-0039-assets/build-refactor.png" alt="build-libs" style="width: 80%;"><br>
+    <em>Fig. 3. CUDA code build libs (left: current; right: refactored)</em>
 </p>
 
 ## **Metrics and Drawbacks**
