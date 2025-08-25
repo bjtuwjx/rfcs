@@ -12,23 +12,20 @@
 - @Fuzewei
 - @aaacaiji
 
-## **Summary**  
+## **Summary** 
 
-Currently, third-party hardware backends primarily integrate with PyTorch through three methods:
-- reusing the CUDA key and its code logic (e.g., [Kunlunxin XPU](https://gitee.com/kunlunxin/pytorch) and [MetaX MACA](https://github.com/MetaX-MACA/mcPytorch/tree/2.4)),
-- utilizing predefined PyTorch in-tree keys along with partial implementation codes (such as [AMD HIP](https://github.com/ROCm/pytorch) and [Intel XPU](https://github.com/intel/intel-extension-for-pytorch)),
--  leveraging the reserved PrivateUse1 key (e.g., [Ascend NPU](https://gitee.com/ascend/pytorch) and [Cambricon MLU](https://github.com/Cambricon/torch_mlu/tree/r2.4_develop)).
-
-On one hand, due to the dominant ecosystem position of the CUDA software stack, some hardware vendors opt to directly reuse the CUDA key, achieving compatibility via CUDA APIs to minimize the code migration cost for PyTorch users. The advantage of this approach is that it allows direct reuse of CUDA code logic, resulting in relatively less integration effort for the vendors. However, to fully leverage the hardware's capabilities, invasive modifications to CUDA kernels and related code are often required. On the other hand, with the continuous improvement of the PrivateUse1 integration mechanism, an increasing number of vendors are adopting this method. Its main benefit is minimal intrusive modification to PyTorch, although it demands greater integration effort from vendors (e.g., inability to directly reuse CUDA code logic).
-
-This RFC proposal aims to fully integrate the strengths of both approaches while addressing their respective shortcomings. The plan is to first decouple the CUDA code, establishing a relatively independent directory structure and compilation units. Subsequently, we will gradually enable unified integration mechanisms for the CUDA hardware backend, CUDA-like hardware backends, and other hardware backends with different architectures into PyTorch.
+This RFC proposal aims to decouple the CUDA-related code from the PyTorch main codebase and reorganize it into a dependent and modular directory hierarchy with the help of a build optimization toolkit. Specifically, the proposal covers the following work:
+- Decouple CUDA-related code from the main codebase at both the inter-file and intra-file levels, reducing the PyTorch core framework's direct dependency on CUDA.
+- Refine the directory hierarchy for third-party backend integration and consolidate the CUDA-related code within it. 
+- Redesign the build system to support standalone compilation of the CUDA backend and develop a wrapped cmake toolkit to support and streamline the build process.
 
 ## **Highlights**  
 
-- Decouple CUDA-related code from the main codebase to reduce the direct dependency of the PyTorch core framework code on CUDA, thereby improving overall code maintainability and modularity.
-- Refine the directory hierarchy to make it clearer and more consistent, enhancing code readability and maintainability. This enables developers to quickly locate and understand backend integration logic, lowers the onboarding barrier for new contributors, and provides a more developer-friendly structure for long-term maintenance and community contributions.
-- Redesign the build system to support standalone compilation of the CUDA backend, simplifying the build process, reducing dependencies, and enabling faster incremental builds.
-- Provide a consistent template for integrating new third-party hardware backends. This reduces integration complexity and time-to-market, while enhancing consistency and pluggability across the PyTorch backend integration mechanism.
+- *Loosely coupled CUDA code*. CUDA-related code is decoupled to reduce the direct dependency of the PyTorch core framework code on CUDA, thereby improving overall code maintainability and modularity.
+- *Enhanced code directory hierarchy*. The backend integration code directory hierarchy is refined to make it clearer and more consistent, thus enhancing code readability and maintainability. This also enables developers to quickly locate and understand backend integration logic, lowers the onboarding barrier for new contributors, and provides a more developer-friendly structure for long-term maintenance and community contributions.
+- *Build process optimization*. Enables standalone compilation of the CUDA backend, simplifying the build process, reducing dependencies, and accelerating incremental builds.
+
+**Beyond that, this RFC proposal establishes a standardized workflow and mechanism for integrating third-party hardware backends into PyTorch.**
 
 ## **Motivation**
 
