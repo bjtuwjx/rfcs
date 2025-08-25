@@ -14,7 +14,7 @@
 
 ## **Summary** 
 
-This RFC proposal aims to decouple the CUDA-related code from the PyTorch main codebase and reorganize it into a dependent and modular directory hierarchy with the help of a build optimization toolkit. Specifically, the proposal covers the following work:
+This RFC proposal aims to decouple the CUDA-related code from the PyTorch main codebase and reorganize it into a independent and modular directory hierarchy with the help of a build optimization toolkit. Specifically, the proposal covers the following work:
 - Decouple CUDA-related code from the main codebase at both the inter-file and intra-file levels, reducing the PyTorch core framework's direct dependency on CUDA.
 - Refine the directory hierarchy for third-party backend integration and consolidate the CUDA-related code within it. 
 - Redesign the build system to support standalone compilation of the CUDA backend and develop a wrapped cmake toolkit to support and streamline the build process.
@@ -38,13 +38,15 @@ Therefore, to address issues such as the excessive coupling of CUDA code, and to
 
 ## **Proposed Implementation**
 
+This section proposes our implementation for decoupling, restructuring and building the CUDA code. We start by presenting the current directory structure of CUDA-related code. Afterwards, we develops two main approaches for separating the CUDA code from the PyTorch main codebase. Then we proposes a new directory hierarchy for CUDA backend integration code into PyTorch. Finally, we explain how to build CUDA code as a standalone build project using a wrapped cmake toolkit.
+
 ### Current directory structure of CUDA-related code
 
-Looking across the PyTorch codebase, CUDA-related code is scattered across multiple directories. These directories span various functional modules of PyTorch, as illustrated in Fig. 1 below:
+Looking across the PyTorch codebase, CUDA-related code is scattered across multiple directories. These directories span various functional modules of PyTorch, as illustrated in Fig. 1 (left) below:
 
 <p align="center">
-    <img src="./RFC-0039-assets/CUDA-related-dirs.png" alt="CUDA-related-dirs" style="width:60%;"><br>
-    <em>Fig. 1. CUDA related directories and their functionalities</em>
+    <img src="./RFC-0039-assets/directory-refactor.png" alt="CUDA-dirs""><br>
+    <em>Fig. 1. CUDA related directories and their functionalities. Left: current directory structure; Right: restructured directory hierarchy. Color-matched directories between left and right represent corresponding components.</em>
 </p>
 
 Our main task is to extract the above-mentioned CUDA-related code from their respective directories and reorganize them under a redesigned and optimized directory structure.
@@ -150,7 +152,7 @@ Some CUDA code is directly coupled with common code or code for other device bac
   - Other macros include `TORCH_CUDA_CU_API`, `TORCH_CUDA_CPP_API`, `TORCH_CUDA_CHECK`
 
 - CUDA-named codes
-  - Function `is_cuda`, backend key `kCUDA`, or device type `cuda`, such as：
+  - Function `is_cuda`, backend key `kCUDA`, or device type `cuda`, such as:
   ```cpp
   static CUDAHooksInterface* cuda_hooks = nullptr;
   xxtensor.is_cuda()
@@ -178,14 +180,9 @@ Moreover, to enable standalone compilation of CUDA code, files required by CUDA 
 
 ### Directory restructuring
 
-After decoupling the CUDA code, the next step is to reorganize it into a new directory structure. Regarding directory restructuring, we first investigated the approaches used by several hardware vendors—such as [AMD (ROCm)](https://github.com/ROCm/pytorch), [Google (TPU)](https://github.com/pytorch/xla/tree/master), [Intel (XPU)](https://github.com/intel/intel-extension-for-pytorch), [Ascend (NPU)](https://gitee.com/ascend/pytorch), and [Cambricon (MLU)](https://github.com/Cambricon/torch_mlu/tree/r2.4_develop) to adapt PyTorch to their hardwares. We analyzed their codebase directory structures, as well as the commonalities and specific modifications made during integration. Based on the analysis, we restructured the CUDA code directory layout shown in Fig. 1 into the new design as illustrated in Fig. 2.
+After decoupling the CUDA code, the next step is to reorganize it into a new directory structure. Regarding directory restructuring, we first investigated the approaches used by several hardware vendors—such as [AMD (ROCm)](https://github.com/ROCm/pytorch), [Google (TPU)](https://github.com/pytorch/xla/tree/master), [Intel (XPU)](https://github.com/intel/intel-extension-for-pytorch), [Ascend (NPU)](https://gitee.com/ascend/pytorch), and [Cambricon (MLU)](https://github.com/Cambricon/torch_mlu/tree/r2.4_develop) to adapt PyTorch to their hardwares. We analyzed their codebase directory structures, as well as the commonalities and specific modifications made during integration. Based on the analysis, we restructured the CUDA code directory layout shown in Fig. 1 (left) into the new design as illustrated in Fig. 1 (right).
 
-<p align="center">
-  <img src="./RFC-0039-assets/restructured-dirs.png" alt="restructured-dirs" style="width:80%;"><br>
-  <em>Fig. 2. Restructured directories for CUDA codes</em>
-</p>
-
-In the following, we shall give an introduction to the restructured directory hierarchy (see Fig. 2).
+In the following, we shall give an introduction to the restructured directory hierarchy (see Fig. 1 (right)).
 
 - Create a `third_device/` directory under the PyTorch home directory to store code for third-party hardware backends integrating with PyTorch. The code for CUDA's integration with PyTorch will be placed under the `third_device/torch_cuda` directory.
 
@@ -193,15 +190,15 @@ In the following, we shall give an introduction to the restructured directory hi
 
 - The `third_device/torch_cuda/torch_cuda` directory contains a collection of Python files (composed of two sub-directories `third_device/torch_cuda/torch_cuda/backends` and `third_device/torch_cuda/torch_cuda/core`) and  a collection of C/C++ files (mainly located in the `third_device/torch_cuda/torch_cuda/csrc` directory).
 
-- The `third_device/torch_cuda/torch_cuda/backends` directory and `third_device/torch_cuda/torch_cuda/core` directory correspond to `torch/backends` directory and `torch/cuda` directory in Fig. 1, respectively.
+- The `third_device/torch_cuda/torch_cuda/backends` directory and `third_device/torch_cuda/torch_cuda/core` directory in Fig. 1 (right) correspond to `torch/backends` directory and `torch/cuda` directory Fig. 1 (left), respectively.
 
 - The `third_device/torch_cuda/torch_cuda/csrc` directory consists of four sub-directories: `third_device/torch_cuda/torch_cuda/csrc/aten`, `third_device/torch_cuda/torch_cuda/csrc/framework`, `third_device/torch_cuda/torch_cuda/csrc/jit`, and `third_device/torch_cuda/torch_cuda/csrc/framework`.
 
-- The `third_device/torch_cuda/torch_cuda/csrc/aten` directory merges the two directories of `torch/aten` and `torch/caffe2` in Fig. 1.
+- The `third_device/torch_cuda/torch_cuda/csrc/aten` directory in Fig. 1 (right) merges the two directories of `torch/aten` and `torch/caffe2` in Fig. 1 (left).
 
-- The `third_device/torch_cuda/torch_cuda/csrc/framework` directory is mainly composed of `torch/csrc/cuda` and `torch/csrc/distributed` directories shown in Fig. 1.
+- The `third_device/torch_cuda/torch_cuda/csrc/framework` directory in Fig. 1 (right) is mainly composed of `torch/csrc/cuda` and `torch/csrc/distributed` directories shown in Fig. 1 (left).
 
-- The `third_device/torch_cuda/torch_cuda/csrc/jit` directory corresponds to the CUDA-specific portion in `torch/csrc/jit` directory presented in Fig. 1.
+- The `third_device/torch_cuda/torch_cuda/csrc/jit` directory in Fig. 1 (right) corresponds to the CUDA-specific portion in `torch/csrc/jit` directory presented in Fig. 1 (left).
 
 - Finally, the `third_device/torch_cuda/torch_cuda/csrc/pybinding` directory is used to store the Python binding codes from C/C++ to Python.
 
