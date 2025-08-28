@@ -1,12 +1,12 @@
 # **CUDA code decoupling and directory restructuring**
 
 **Authors:**
-- @ywwbill
 - @bjtuwjx
 - @jinghere11
 - @bithighrr
 - @treestreamymw
 - @liyagit21
+- @ywwbill
 - @deadsec1994
 - @leiborzhu
 - @Fuzewei
@@ -182,6 +182,11 @@ Moreover, to enable standalone compilation of CUDA code, files required by CUDA 
 
 After decoupling the CUDA code, the next step is to reorganize it into a new directory structure. Regarding directory restructuring, we first investigated the approaches used by several hardware vendors—such as [AMD (ROCm)](https://github.com/ROCm/pytorch), [Google (TPU)](https://github.com/pytorch/xla/tree/master), [Intel (XPU)](https://github.com/intel/intel-extension-for-pytorch), [Ascend (NPU)](https://gitee.com/ascend/pytorch), and [Cambricon (MLU)](https://github.com/Cambricon/torch_mlu/tree/r2.4_develop) to adapt PyTorch to their hardwares. We analyzed their codebase directory structures, as well as the commonalities and specific modifications made during integration. Based on the analysis, we restructured the CUDA code directory layout shown in Fig. 1 (left) into the new design as illustrated in Fig. 1 (right).
 
+<p align="center">
+    <img src="./RFC-0039-assets/directory-refactor.png" alt="CUDA-dirs""><br>
+    <em>Fig. 1. CUDA related directories and their functionalities. Left: current directory structure; Right: restructured directory hierarchy. Color-matched directories between left and right represent corresponding components.</em>
+</p>
+
 In the following, we shall give an introduction to the restructured directory hierarchy (see Fig. 1 (right)).
 
 - Create a `third_device/` directory under the PyTorch home directory to store code for third-party hardware backends integrating with PyTorch. The code for CUDA's integration with PyTorch will be placed under the `third_device/torch_cuda` directory.
@@ -204,11 +209,11 @@ In the following, we shall give an introduction to the restructured directory hi
 
 ### Project build optimization
 
-Since CPU code and CUDA code is tightly coupled in current PyTorch codebase, the build process for these code is also closely interconnected. The CPU code and CUDA code is built in a single stage process and will eventually built into unified shared libs, e.g., `libtorch`, `libtorch_python` and `lib_C` (see Fig. 2 (left)).
+Since CPU code and CUDA code is tightly coupled in current PyTorch codebase, the build process for these code is also closely interconnected. The CPU code and CUDA code are built in a single stage process and will eventually built into unified shared libs, e.g., `libtorch`, `libtorch_python` and `lib_C` (see Fig. 2 (left)).
 
 <p align="center">
     <img src="RFC-0039-assets/overall-build-process.png" alt="build-stages" style="width: 90%;"><br>
-    <em>Fig. 2. PyTorch code build process. Left shows the current build process, where CPU and CUDA code is built in a single stage. Right shows the refactored build process, where CPU code build and CUDA code build are two independent processes.</em>
+    <em>Fig. 2. PyTorch code build process. Left shows the current build process, where CPU and CUDA code are built in a single stage. Right shows the refactored build process, where CPU code build and CUDA code build are two independent processes.</em>
 </p>
 
 This RFC proposal has made the following key improvements/changes to the native PyTorch CUDA device build process.
@@ -306,7 +311,7 @@ We hope that, with the collective effort of the PyTorch community, these patches
 
 If the RFC proposal is accepted, our team plans to implement it. In fact, we have already validated the decoupling and refactoring scheme on PyTorch v2.0.1 and v2.6.0. We are eager to continue to implementing and optimizing this solution on the latest PyTorch main branch.
 
-In summary, implementing this RFC proposal is envisioned as a two-phase process. In the short term (phase 1), we shall implement code decoupling and directory restructuring for the CUDA backend. In the long term (phase 2), we will integrate more new backends using the proposed plan.
+In summary, implementing this RFC proposal is envisioned as a two-phase process. In the short term (phase 1), we shall implement code decoupling, directory restructuring, and build optimization for the CUDA backend. In the long term (phase 2), we aim to promote our solution to more hardware vendors and we hope to integrate more new backends using the proposed solution.
 
 *Phase 1*: CUDA code decoupling and directory restructuring
 - CUDA code decoupling
@@ -321,5 +326,4 @@ In summary, implementing this RFC proposal is envisioned as a two-phase process.
   - Make standalone build project for CUDA
   - Implement dedicated extension builder
 
-*Phase 2*: More third-party hardware backends integration
-- Intreating third-party hardware backends into PyTorch using CUDA key based on the decoupled methodology
+*Phase 2*: Promote the solution to more hardware vendors
