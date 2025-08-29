@@ -16,7 +16,7 @@
 
 This RFC proposal aims to decouple the CUDA-related code from the PyTorch main codebase and reorganize it into a independent and modular directory hierarchy with the help of a build optimization toolkit. Specifically, the proposal covers the following work:
 - Decouple CUDA-related code from the main codebase at both the inter-file and intra-file levels, reducing the PyTorch core framework's direct dependency on CUDA.
-- Refine the directory hierarchy for third-party backend integration and consolidate the CUDA-related code within it. 
+- Propose a modular and standardized directory hierarchy for third-party backend integration, and consolidate all CUDA-related code within it. 
 - Redesign the build system to support standalone compilation of the CUDA backend and develop a wrapped cmake toolkit to support and streamline the build process.
 
 ## **Highlights**  
@@ -38,18 +38,9 @@ Therefore, to address issues such as the excessive coupling of CUDA code, and to
 
 ## **Proposed Implementation**
 
-This section proposes our implementation for decoupling, restructuring and building the CUDA code. We start by presenting the current directory structure of CUDA-related code. Afterwards, we develops two main approaches for separating the CUDA code from the PyTorch main codebase. Then we proposes a new directory hierarchy for CUDA backend integration code into PyTorch. Finally, we explain how to build CUDA code as a standalone build project using a wrapped cmake toolkit.
+The first step toward decoupling CUDA code is to identify and isolate it. This is challenging in the current PyTorch codebase, where CUDA-related code is scattered across multiple directories (see Fig. 1, left), files, or even mixed with CPU code within the same file. To address this, we propose a decoupling approach at both inter-file and intra-file levels, leveraging metadata such as directory names, file names, extensions, configuration files, and build flags.
 
-### Current directory structure of CUDA-related code
-
-Looking across the PyTorch codebase, CUDA-related code is scattered across multiple directories. These directories span various functional modules of PyTorch, as illustrated in Fig. 1 (left) below:
-
-<p align="center">
-    <img src="./RFC-0039-assets/directory-refactor.png" alt="CUDA-dirs""><br>
-    <em>Fig. 1. CUDA related directories and their functionalities. Left: current directory structure; Right: restructured directory hierarchy. Color-matched directories between left and right represent corresponding components.</em>
-</p>
-
-Our main task is to extract the above-mentioned CUDA-related code from their respective directories and reorganize them under a redesigned and optimized directory structure.
+After decoupling, we reorganize the code into a new, modular directory hierarchy—designed to be clean and maintainable for developers. To support standalone builds and standardized integration for third-party backends, we also provide a set of supporting toolkits.
 
 ### Decoupling approaches
 
