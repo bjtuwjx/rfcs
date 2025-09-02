@@ -174,7 +174,7 @@ Moreover, to enable standalone compilation of CUDA code, dependent files also ne
 After decoupling the CUDA code, the next step is to refactor it into a new directory hierarchy. We first investigate the adaptation approaches used by several hardware vendors—such as [AMD (ROCm)](https://github.com/ROCm/pytorch), [Google (TPU)](https://github.com/pytorch/xla/tree/master), [Intel (XPU)](https://github.com/intel/intel-extension-for-pytorch), [Ascend (NPU)](https://gitee.com/ascend/pytorch), and [Cambricon (MLU)](https://github.com/Cambricon/torch_mlu/tree/r2.4_develop). We analyze their codebase directory hierarchy, as well as the commonalities and specific modifications during integration. Based on the analysis, we refactor the CUDA code directory shown (Fig. 1 (left)) into a new design (Fig. 1 (right)).
 
 <p align="center">
-    <img src="./RFC-0045-assets/directory-refactor.png" alt="CUDA-dirs""><br>
+    <img src="./RFC-0039-assets/directory-refactor.png" alt="CUDA-dirs""><br>
     <em>Fig. 1. CUDA related directories and their functionalities. Left: current directory hierarchy; Right: refactored directory hierarchy. Color-matched directories between left and right represent corresponding components.</em>
 </p>
 
@@ -204,7 +204,7 @@ In the following, we shall give an introduction to the refactored directory hier
 Since CPU and CUDA code is tightly coupled in current PyTorch codebase, the build process for these code is also closely interleaved. The CPU code and CUDA code are built in a single stage process and packed into unified shared libs, e.g., `libtorch`, `libtorch_python` and `lib_C` (see Fig. 2 (left)).
 
 <p align="center">
-    <img src="RFC-0045-assets/overall-build-process.png" alt="build-stages" style="width: 90%;"><br>
+    <img src="RFC-0039-assets/overall-build-process.png" alt="build-stages" style="width: 90%;"><br>
     <em>Fig. 2. PyTorch code build process. Left: current build process, where CPU and CUDA code are built in a single stage. Right: refactored build process, where CPU code build and CUDA code build are two separate processes.</em>
 </p>
 
@@ -229,7 +229,7 @@ This RFC proposal has made the following key improvements/changes to the native 
   - Unifying the dedicated extension builder `torch.utils.cpp_extension.NewDeviceCppExtension` for new backends
   
 <p align="center">
-    <img src="RFC-0045-assets/build-refactor.png" alt="build-libs" style="width: 90%;"><br>
+    <img src="RFC-0039-assets/build-refactor.png" alt="build-libs" style="width: 90%;"><br>
     <em>Fig. 3. CUDA code build libs (left: current; right: refactored)</em>
 </p>
 
